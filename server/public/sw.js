@@ -28,7 +28,7 @@ const SHELL_ASSETS = [
   '/fonts/plus-jakarta-sans-vietnamese.woff2',
   '/fonts/plus-jakarta-sans-latin-ext.woff2',
   '/fonts/plus-jakarta-sans-cyrillic.woff2',
-  '/assets/main-CAEkomHt.js',
+  '/assets/main-C2bVdYhX.js',
   '/assets/main-Codf8fWC.css'
 ];
 

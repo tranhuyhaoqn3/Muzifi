@@ -122,6 +122,7 @@ export const api = {
     getQualities: (v) => request('/api/online/qualities?v=' + encodeURIComponent(v)),
     meData: () => request('/api/online/me-data'),
     syncMeData: () => request('/api/online/me-data/sync', { method: 'POST' }),
+    getRecommendations: (force = false) => request('/api/online/recommendations' + (force ? '?force=true' : '')),
   },
   jobs: {
     list: () => request('/api/jobs'),

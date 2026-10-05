@@ -24,6 +24,7 @@ import {
   preloadTrack
 } from '../services/streamCache.js';
 import { queue } from '../services/queue.js';
+import { getGeminiRecommendations } from '../services/geminiRecommend.js';
 
 const router = express.Router();
 
@@ -290,6 +291,18 @@ router.get('/me-data', requireAuth, async (req, res) => {
 
 router.post('/me-data/sync', requireAuth, async (req, res) => {
   res.json({ success: true, subscriptions: [], liked: [], playlists: [] });
+});
+
+// 9. AI Trending Recommendations (Gemini-powered, weekly cached)
+router.get('/recommendations', requireAuth, async (req, res) => {
+  try {
+    const force = req.query.force === 'true';
+    const result = await getGeminiRecommendations({ force });
+    res.json(result);
+  } catch (err) {
+    console.error('[Recommendations Error]', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 export default router;

@@ -335,9 +335,27 @@ export class OnlineView {
 
     this.isSearch = false;
     try {
-      const feed = await api.online.getFeed(topic, { page: 1 });
-      this.feedItems = feed.items || [];
+      // Try AI recommendations first (Gemini-powered weekly trending)
+      let items = [];
+      let isFromRecommendations = false;
+      try {
+        const rec = await api.online.getRecommendations();
+        items = rec?.items || [];
+        if (items.length > 0) isFromRecommendations = true;
+      } catch (recErr) {
+        // Recommendations unavailable, fall through to regular feed
+      }
+
+      // Fall back to regular SoundCloud feed if recommendations are empty
+      if (items.length === 0) {
+        const feed = await api.online.getFeed(topic, { page: 1 });
+        items = feed.items || [];
+      }
+
+      // Cap at 100 and disable infinite scroll (fixed list, no endless loading)
+      this.feedItems = items.slice(0, 100);
       this.allItems = [...this.feedItems];
+      this.hasMore = false; // No infinite scroll for the feed/recommendations
       this.renderVideoCards(this.feedItems, false, false);
     } catch (err) {
       if (listEl) {
@@ -469,14 +487,15 @@ export class OnlineView {
       `;
     }).join('');
 
-    const sentinelHtml = `
+    const sentinelHtml = this.hasMore ? `
       <div id="online-sentinel" style="grid-column: 1 / -1; height: 50px; display: flex; align-items: center; justify-content: center; margin: 16px 0;">
         <div class="infinite-loader" style="display:none;font-size:0.82rem;color:var(--text-muted);display:flex;align-items:center;gap:8px;">
           <div style="width:16px;height:16px;border:2px solid var(--border-subtle);border-top-color:var(--accent-primary);border-radius:50%;animation:spin 0.8s linear infinite;"></div>
           <span>Đang tải thêm bài hát...</span>
         </div>
       </div>
-    `;
+    ` : '';
+
 
     if (append) {
       const sentinel = document.getElementById('online-sentinel');
