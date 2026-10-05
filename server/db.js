@@ -23,7 +23,7 @@ export function initDatabase() {
       thumbnail_path TEXT,
       width INTEGER,
       height INTEGER,
-      source TEXT NOT NULL CHECK(source IN ('upload', 'youtube')),
+      source TEXT NOT NULL CHECK(source IN ('upload', 'youtube', 'soundcloud')),
       source_url TEXT,
       original_ext TEXT,
       created_at TEXT NOT NULL,
@@ -48,7 +48,7 @@ export function initDatabase() {
 
     CREATE TABLE IF NOT EXISTS jobs (
       id TEXT PRIMARY KEY,
-      kind TEXT NOT NULL CHECK(kind IN ('youtube', 'convert')),
+      kind TEXT NOT NULL CHECK(kind IN ('youtube', 'convert', 'soundcloud')),
       url TEXT,
       media_type TEXT,
       quality TEXT,
@@ -127,6 +127,76 @@ export function initDatabase() {
   try { db.exec(`CREATE INDEX IF NOT EXISTS idx_tracks_user ON tracks(user_id)`); } catch {}
   try { db.exec(`CREATE INDEX IF NOT EXISTS idx_playlists_user ON playlists(user_id)`); } catch {}
   try { db.exec(`CREATE INDEX IF NOT EXISTS idx_jobs_user ON jobs(user_id)`); } catch {}
+
+  // Migrate jobs table CHECK constraint to include 'soundcloud' if needed
+  try {
+    const tableInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='jobs'").get();
+    if (tableInfo && tableInfo.sql && !tableInfo.sql.includes('soundcloud')) {
+      db.exec(`
+        CREATE TABLE jobs_new (
+          id TEXT PRIMARY KEY,
+          kind TEXT NOT NULL CHECK(kind IN ('youtube', 'convert', 'soundcloud')),
+          url TEXT,
+          media_type TEXT,
+          quality TEXT,
+          status TEXT NOT NULL CHECK(status IN ('queued', 'downloading', 'processing', 'done', 'error', 'canceled')),
+          progress REAL DEFAULT 0,
+          speed TEXT,
+          eta TEXT,
+          error TEXT,
+          track_id TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          user_id TEXT DEFAULT 'default',
+          extra TEXT DEFAULT '{}'
+        );
+        INSERT INTO jobs_new SELECT id, kind, url, media_type, quality, status, progress, speed, eta, error, track_id, created_at, updated_at, user_id, extra FROM jobs;
+        DROP TABLE jobs;
+        ALTER TABLE jobs_new RENAME TO jobs;
+        CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+        CREATE INDEX IF NOT EXISTS idx_jobs_user ON jobs(user_id);
+      `);
+    }
+  } catch (migErr) {
+    console.warn('[DB Migration] jobs table notice:', migErr.message);
+  }
+
+  // Migrate tracks table CHECK constraint to include 'soundcloud' if needed
+  try {
+    const tableInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='tracks'").get();
+    if (tableInfo && tableInfo.sql && !tableInfo.sql.includes('soundcloud')) {
+      db.exec(`
+        CREATE TABLE tracks_new (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          artist TEXT,
+          album TEXT,
+          duration_sec REAL DEFAULT 0,
+          media_type TEXT NOT NULL CHECK(media_type IN ('audio', 'video')),
+          mime TEXT NOT NULL,
+          file_path TEXT NOT NULL,
+          file_size INTEGER DEFAULT 0,
+          thumbnail_path TEXT,
+          width INTEGER,
+          height INTEGER,
+          source TEXT NOT NULL CHECK(source IN ('upload', 'youtube', 'soundcloud')),
+          source_url TEXT,
+          original_ext TEXT,
+          created_at TEXT NOT NULL,
+          last_played_at TEXT,
+          user_id TEXT DEFAULT 'default'
+        );
+        INSERT INTO tracks_new SELECT id, title, artist, album, duration_sec, media_type, mime, file_path, file_size, thumbnail_path, width, height, source, source_url, original_ext, created_at, last_played_at, user_id FROM tracks;
+        DROP TABLE tracks;
+        ALTER TABLE tracks_new RENAME TO tracks;
+        CREATE INDEX IF NOT EXISTS idx_tracks_created ON tracks(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_tracks_type ON tracks(media_type);
+        CREATE INDEX IF NOT EXISTS idx_tracks_user ON tracks(user_id);
+      `);
+    }
+  } catch (migErr) {
+    console.warn('[DB Migration] tracks table notice:', migErr.message);
+  }
 
   // User-specific settings table
   db.exec(`

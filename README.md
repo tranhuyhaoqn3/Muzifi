@@ -6,6 +6,14 @@
 
 ## ✨ Tính Năng Nổi Bật
 
+- 🟠 **Tích Hợp SoundCloud API Trực Tuyến Tốc Độ Cao (`feat/soundcloud`)**:
+  - Tự động trích xuất và xoay vòng `client_id` trực tiếp từ SoundCloud bundle scripts.
+  - Tìm kiếm bài hát, nghệ sĩ, playlist và gợi ý từ khóa (Auto-complete) thời gian thực.
+  - Giải mã trực tiếp luồng CloudFront CDN MP3 128kbps nghe ngay lập tức, không độ trễ.
+  - Tải bài hát MP3 trực tiếp siêu nhanh (vài giây/bài) không tốn CPU transcode.
+  - Kho nhạc phong phú: V-Pop Hit, Sơn Tùng M-TP, Đen Vâu, Vũ., Rap Việt, Remix TikTok, Lofi Chill, US-UK, EDM.
+  - Tự động tiếp nối bài hát liên quan (SoundCloud Radio) khi nghe hết danh sách.
+
 - 📱 **Tối ưu PWA & Màn hình khóa (Lock Screen Controls)**:
   - Hỗ trợ Media Session API đầy đủ: Phát, Tạm dừng, Bài trước, Bài tiếp theo và thanh trượt tua bài (Timeline Scrubber) trực tiếp từ màn hình khóa iOS (iOS 15+) và Android Notification Shade.
   - Cấu hình WebKit Audio Session (`playback`) ngăn ngừa Safari bị dừng khi tắt màn hình.
@@ -37,7 +45,7 @@
 ## 🛠️ Công Nghệ Sử Dụng
 
 - **Frontend**: Vanilla JavaScript (ES Modules), Vanilla CSS, Vite, Service Worker, IndexedDB API, Media Session API.
-- **Backend**: Node.js, Express.js, Better-SQLite3, yt-dlp, FFmpeg.
+- **Backend**: Node.js, Express.js, Better-SQLite3, SoundCloud Public API v2, FFmpeg.
 - **Kiến trúc**: RESTful API, PWA (Progressive Web App).
 
 ---

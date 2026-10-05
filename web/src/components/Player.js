@@ -632,7 +632,8 @@ export class PlayerEngine {
       this.showPlayerLoading('Đang tải...');
     }
 
-    const streamUrl = this.getAuthStreamUrl(`/api/youtube/stream?v=${encodeURIComponent(onlineTrack.youtubeId)}&type=audio`);
+    const streamId = onlineTrack.soundcloudId || onlineTrack.youtubeId || onlineTrack.id;
+    const streamUrl = this.getAuthStreamUrl(`/api/soundcloud/stream?v=${encodeURIComponent(streamId)}&type=audio`);
 
     // DO NOT call this.audio.pause()! Swapping src and calling load/play preserves background audio session
     if (this.video) this.video.pause();
@@ -1102,38 +1103,40 @@ export class PlayerEngine {
         if (navigator.onLine) {
           // Continuous Spotify Autoplay for Online tracks only
           try {
-            let ytId = currentTrack?.youtubeId;
-            if (!ytId && currentTrack?.source_url) {
-              const m = currentTrack.source_url.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
-              if (m) ytId = m[1];
+            let scId = currentTrack?.soundcloudId || currentTrack?.youtubeId;
+            if (!scId && currentTrack?.source_url) {
+              const m = currentTrack.source_url.match(/(?:tracks\/|v=)([a-zA-Z0-9_-]+)/);
+              if (m) scId = m[1];
             }
-            if (!ytId && currentTrack?.title) {
-              const sr = await api.youtube.search(`${currentTrack.title} ${currentTrack.artist || ''}`.trim(), { limit: 1 });
-              ytId = sr?.items?.[0]?.id;
+            if (!scId && currentTrack?.title) {
+              const sr = await api.soundcloud.search(`${currentTrack.title} ${currentTrack.artist || ''}`.trim(), { limit: 1 });
+              scId = sr?.items?.[0]?.id;
             }
 
-            if (ytId) {
-              const res = await api.youtube.getRelated(ytId);
+            if (scId) {
+              const res = await api.soundcloud.getRelated(scId);
               if (res?.items && res.items.length > 0) {
                 const currentMediaType = currentTrack?.media_type || 'audio';
                 const newTracks = res.items
-                  .filter(it => it.id !== ytId)
+                  .filter(it => it.id !== scId)
                   .map(it => ({
-                    id: `yt_${it.id}_${currentMediaType}`,
+                    id: `sc_${it.id}_${currentMediaType}`,
+                    soundcloudId: it.id,
                     youtubeId: it.id,
                     title: it.title,
-                    artist: it.channel || 'Nghệ sĩ',
-                    album: res.topic || res.genre || 'Radio Trực Tuyến',
+                    artist: it.channel || it.artist || 'Nghệ sĩ',
+                    album: res.topic || res.genre || 'SoundCloud Radio',
                     genre: res.genre || '',
                     duration_sec: it.duration || 0,
                     media_type: currentMediaType,
                     isOnline: true,
-                    thumbnail_url: it.thumbnail
+                    thumbnail_url: it.thumbnail,
+                    source: 'soundcloud'
                   }));
 
-                const existingIds = new Set(queue.map(t => t.youtubeId || (t.id && t.id.replace('yt_', '').split('_')[0])));
-                const freshTracks = newTracks.filter(t => !existingIds.has(t.youtubeId));
-                const toAdd = freshTracks.length > 0 ? freshTracks : newTracks.filter(t => t.youtubeId !== ytId);
+                const existingIds = new Set(queue.map(t => t.soundcloudId || t.youtubeId || (t.id && t.id.replace(/^(sc_|yt_)/, '').split('_')[0])));
+                const freshTracks = newTracks.filter(t => !existingIds.has(t.soundcloudId));
+                const toAdd = freshTracks.length > 0 ? freshTracks : newTracks.filter(t => t.soundcloudId !== scId);
 
                 if (toAdd.length > 0) {
                   const updatedQueue = [...queue, ...toAdd];
@@ -1282,11 +1285,12 @@ export class PlayerEngine {
 
     if (this.preloadedTrackId === nextTrack.id) return;
 
-    if (nextTrack.isOnline && nextTrack.youtubeId && navigator.onLine) {
+    const onlineId = nextTrack.soundcloudId || nextTrack.youtubeId;
+    if (nextTrack.isOnline && onlineId && navigator.onLine) {
       this.preloadedTrackId = nextTrack.id;
       const mediaType = nextTrack.media_type || 'audio';
       // Preload on server so disk cache is ready before current track ends
-      api.youtube.preload({ v: nextTrack.youtubeId, type: mediaType }).catch(err => {
+      api.soundcloud.preload({ v: onlineId, type: mediaType }).catch(err => {
         console.warn('[Preload] Server preload notice:', err);
       });
     } else if (!nextTrack.isOnline && nextTrack.id) {
@@ -1336,9 +1340,10 @@ export class PlayerEngine {
     }
 
     const { currentTrack, queue } = store.get();
-    if (currentTrack?.isOnline && currentTrack.youtubeId) {
+    const targetOnlineId = currentTrack?.soundcloudId || currentTrack?.youtubeId;
+    if (currentTrack?.isOnline && targetOnlineId) {
       try {
-        const streamUrl = this.getAuthStreamUrl(`/api/youtube/stream?v=${encodeURIComponent(currentTrack.youtubeId)}&type=${currentTrack.media_type || 'audio'}`);
+        const streamUrl = this.getAuthStreamUrl(`/api/soundcloud/stream?v=${encodeURIComponent(targetOnlineId)}&type=${currentTrack.media_type || 'audio'}`);
         const checkRes = await fetch(streamUrl);
         if (!checkRes.ok) {
           let errData = {};
@@ -2058,26 +2063,28 @@ export class PlayerEngine {
     const startSource = sourceEl || this.playerDownloadBtn || document.getElementById('player-thumb');
     animateFlyToCorner(startSource, track);
 
-    let youtubeId = track.youtubeId;
-    if (!youtubeId && track.id) {
+    let soundcloudId = track.soundcloudId || track.youtubeId;
+    if (!soundcloudId && track.id) {
       if (typeof track.id === 'string') {
-        if (track.id.startsWith('yt_')) {
-          youtubeId = track.id.split('_')[1];
-        } else if (/^[a-zA-Z0-9_-]{11}$/.test(track.id)) {
-          youtubeId = track.id;
+        if (track.id.startsWith('sc_') || track.id.startsWith('yt_')) {
+          soundcloudId = track.id.split('_')[1];
+        } else {
+          soundcloudId = track.id;
         }
+      } else {
+        soundcloudId = String(track.id);
       }
     }
-    if (!youtubeId && track.source_url) {
-      const match = track.source_url.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
-      if (match) youtubeId = match[1];
+    if (!soundcloudId && track.source_url) {
+      const match = track.source_url.match(/(?:tracks\/|v=)([a-zA-Z0-9_-]+)/);
+      if (match) soundcloudId = match[1];
     }
-    if (!youtubeId && track.url) {
-      const match = track.url.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
-      if (match) youtubeId = match[1];
+    if (!soundcloudId && track.url) {
+      const match = track.url.match(/(?:tracks\/|v=)([a-zA-Z0-9_-]+)/);
+      if (match) soundcloudId = match[1];
     }
 
-    if (!youtubeId) {
+    if (!soundcloudId) {
       this.showToast('Tệp này đã có sẵn trong thư viện cá nhân', 2500);
       return;
     }
@@ -2086,12 +2093,14 @@ export class PlayerEngine {
     const artist = track.artist || track.channel || '';
     this.showToast(`Đang thêm audio "${title}" vào tiến trình tải...`, 2000);
     try {
-      await api.youtube.download({
-        url: `https://www.youtube.com/watch?v=${youtubeId}`,
+      await api.soundcloud.download({
+        url: track.url || (soundcloudId ? `https://soundcloud.com/tracks/${soundcloudId}` : null),
+        id: soundcloudId,
         mediaType: 'audio',
-        quality: '720p',
+        quality: 'HQ',
         title: title,
-        artist: artist
+        artist: artist,
+        thumbnail: track.thumbnail || track.thumbnail_url
       });
       this.showToast(`Đã thêm "${title}" vào danh sách tác vụ tải!`, 3000);
       try {

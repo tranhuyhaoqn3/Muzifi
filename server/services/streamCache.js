@@ -4,6 +4,7 @@ import https from 'https';
 import http from 'http';
 import { config } from '../config.js';
 import { getStreamUrl, normalizeYouTubeId } from './ytdlp.js';
+import { getSoundCloudStreamUrl } from './soundcloud.js';
 
 // Maximum cache storage size: 1.5 GB (~350 full audio tracks)
 const MAX_CACHE_SIZE_BYTES = 1.5 * 1024 * 1024 * 1024;
@@ -12,15 +13,16 @@ const MAX_CACHE_SIZE_BYTES = 1.5 * 1024 * 1024 * 1024;
 const activeDownloads = new Set();
 
 /**
- * Get cache file path for a video ID and media type
+ * Get cache file path for a video/track ID and media type
  */
 export function getCachePath(rawVideoId, mediaType = 'audio') {
-  const v = normalizeYouTubeId(rawVideoId);
-  const ext = mediaType === 'video' ? 'mp4' : 'm4a';
-  const fileName = `${v}_${mediaType}.${ext}`;
+  const cleanId = String(rawVideoId).trim().replace(/^(sc_|yt_)/, '').split('_')[0];
+  const isSoundCloud = /^\d+$/.test(cleanId) || String(rawVideoId).startsWith('sc_');
+  const ext = mediaType === 'video' ? 'mp4' : (isSoundCloud ? 'mp3' : 'm4a');
+  const fileName = `${cleanId}_${mediaType}.${ext}`;
   const filePath = path.join(config.CACHE_DIR, fileName);
-  const mime = mediaType === 'video' ? 'video/mp4' : 'audio/mp4';
-  return { filePath, fileName, mime, ext, videoId: v };
+  const mime = mediaType === 'video' ? 'video/mp4' : (isSoundCloud ? 'audio/mpeg' : 'audio/mp4');
+  return { filePath, fileName, mime, ext, videoId: cleanId };
 }
 
 /**
@@ -55,7 +57,7 @@ export function touchCache(rawVideoId, mediaType = 'audio') {
  * Background cache downloader for a stream URL
  */
 export async function cacheStreamInBackground(rawVideoId, mediaType = 'audio', streamUrl = null) {
-  const v = normalizeYouTubeId(rawVideoId);
+  const v = String(rawVideoId).trim().replace(/^(sc_|yt_)/, '').split('_')[0];
   if (!v) return null;
 
   const key = `${v}_${mediaType}`;
@@ -73,8 +75,13 @@ export async function cacheStreamInBackground(rawVideoId, mediaType = 'audio', s
   try {
     let urlToDownload = streamUrl;
     if (!urlToDownload) {
-      const resolved = await getStreamUrl(v, mediaType);
-      urlToDownload = resolved.streamUrl;
+      if (/^\d+$/.test(v) || String(rawVideoId).startsWith('sc_')) {
+        const resolved = await getSoundCloudStreamUrl(v);
+        urlToDownload = resolved.streamUrl;
+      } else {
+        const resolved = await getStreamUrl(v, mediaType);
+        urlToDownload = resolved.streamUrl;
+      }
     }
 
     if (!urlToDownload) {
@@ -147,10 +154,10 @@ export async function cacheStreamInBackground(rawVideoId, mediaType = 'audio', s
 }
 
 /**
- * Preload track: resolves Google Video stream and downloads in background
+ * Preload track: resolves stream and downloads in background
  */
 export async function preloadTrack(rawVideoId, mediaType = 'audio') {
-  const v = normalizeYouTubeId(rawVideoId);
+  const v = String(rawVideoId).trim().replace(/^(sc_|yt_)/, '').split('_')[0];
   if (!v) return { success: false, message: 'Invalid ID' };
 
   if (isStreamCached(v, mediaType)) {
@@ -158,10 +165,19 @@ export async function preloadTrack(rawVideoId, mediaType = 'audio') {
     return { success: true, cached: true, videoId: v };
   }
 
-  // Pre-resolve stream URL so yt-dlp delay is eliminated
-  const resolved = await getStreamUrl(v, mediaType);
+  let streamUrl = null;
+  if (/^\d+$/.test(v) || String(rawVideoId).startsWith('sc_')) {
+    const resolved = await getSoundCloudStreamUrl(v);
+    streamUrl = resolved.streamUrl;
+  } else {
+    const resolved = await getStreamUrl(v, mediaType);
+    streamUrl = resolved.streamUrl;
+  }
+
   // Start caching audio in background
-  cacheStreamInBackground(v, mediaType, resolved.streamUrl);
+  if (streamUrl) {
+    cacheStreamInBackground(v, mediaType, streamUrl);
+  }
 
   return { success: true, cached: false, preloading: true, videoId: v };
 }

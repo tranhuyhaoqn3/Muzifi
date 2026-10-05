@@ -102,26 +102,47 @@ export const api = {
     }
   },
   get: (url) => request(url),
-  youtube: {
-    info: (url) => request('/api/youtube/info', { method: 'POST', body: { url } }),
-    download: (payload) => request('/api/youtube/download', { method: 'POST', body: payload }),
+  soundcloud: {
+    info: (url) => request('/api/soundcloud/info', { method: 'POST', body: { url } }),
+    download: (payload) => request('/api/soundcloud/download', { method: 'POST', body: payload }),
     getFeed: (topic = '', params = {}) => {
       const sp = new URLSearchParams(params);
       if (topic) sp.set('topic', topic);
       const qs = sp.toString();
-      return request('/api/youtube/feed' + (qs ? '?' + qs : ''));
+      return request('/api/soundcloud/feed' + (qs ? '?' + qs : ''));
     },
     search: (q, params = {}) => {
       const sp = new URLSearchParams(params);
       sp.set('q', q);
-      return request('/api/youtube/search?' + sp.toString());
+      return request('/api/soundcloud/search?' + sp.toString());
     },
-    suggest: (q) => request('/api/youtube/suggest?q=' + encodeURIComponent(q)),
-    getRelated: (v) => request('/api/youtube/related?v=' + encodeURIComponent(v)),
-    preload: (params = {}) => request('/api/youtube/preload?' + new URLSearchParams(params).toString()),
-    getQualities: (v) => request('/api/youtube/qualities?v=' + encodeURIComponent(v)),
-    meData: () => request('/api/youtube/me-data'),
-    syncMeData: () => request('/api/youtube/me-data/sync', { method: 'POST' }),
+    suggest: (q) => request('/api/soundcloud/suggest?q=' + encodeURIComponent(q)),
+    getRelated: (v) => request('/api/soundcloud/related?v=' + encodeURIComponent(v)),
+    preload: (params = {}) => request('/api/soundcloud/preload?' + new URLSearchParams(params).toString()),
+    getQualities: (v) => request('/api/soundcloud/qualities?v=' + encodeURIComponent(v)),
+    meData: () => request('/api/soundcloud/me-data'),
+    syncMeData: () => request('/api/soundcloud/me-data/sync', { method: 'POST' }),
+  },
+  youtube: {
+    info: (url) => request('/api/soundcloud/info', { method: 'POST', body: { url } }),
+    download: (payload) => request('/api/soundcloud/download', { method: 'POST', body: payload }),
+    getFeed: (topic = '', params = {}) => {
+      const sp = new URLSearchParams(params);
+      if (topic) sp.set('topic', topic);
+      const qs = sp.toString();
+      return request('/api/soundcloud/feed' + (qs ? '?' + qs : ''));
+    },
+    search: (q, params = {}) => {
+      const sp = new URLSearchParams(params);
+      sp.set('q', q);
+      return request('/api/soundcloud/search?' + sp.toString());
+    },
+    suggest: (q) => request('/api/soundcloud/suggest?q=' + encodeURIComponent(q)),
+    getRelated: (v) => request('/api/soundcloud/related?v=' + encodeURIComponent(v)),
+    preload: (params = {}) => request('/api/soundcloud/preload?' + new URLSearchParams(params).toString()),
+    getQualities: (v) => request('/api/soundcloud/qualities?v=' + encodeURIComponent(v)),
+    meData: () => request('/api/soundcloud/me-data'),
+    syncMeData: () => request('/api/soundcloud/me-data/sync', { method: 'POST' }),
   },
   jobs: {
     list: () => request('/api/jobs'),

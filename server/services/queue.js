@@ -4,6 +4,7 @@ import fs from 'fs';
 import { db, getSetting } from '../db.js';
 import { config } from '../config.js';
 import { downloadYouTube } from './ytdlp.js';
+import { getSoundCloudStreamUrl, downloadSoundCloudTrackDirect, normalizeSoundCloudId } from './soundcloud.js';
 import { probeMedia, convertAudioToM4A, convertVideoToMP4, generateVideoThumbnail } from './ffmpeg.js';
 import { extractMetadata } from './metadata.js';
 import { getLyrics } from './lyrics.js';
@@ -184,8 +185,17 @@ class JobQueue {
     abortControllers.set(nextJob.id, abortController);
 
     try {
-      if (nextJob.kind === 'youtube') {
-        await this.runYouTubeJob(nextJob, abortController.signal);
+      if (nextJob.kind === 'soundcloud') {
+        await this.runSoundCloudJob(nextJob, abortController.signal);
+      } else if (nextJob.kind === 'youtube') {
+        const isSc = (nextJob.url && nextJob.url.includes('soundcloud.com')) ||
+                     /^\d+$/.test(nextJob.url) ||
+                     (nextJob.extra && (nextJob.extra.includes('soundcloud') || /"id":"\d+"/.test(nextJob.extra)));
+        if (isSc) {
+          await this.runSoundCloudJob(nextJob, abortController.signal);
+        } else {
+          await this.runYouTubeJob(nextJob, abortController.signal);
+        }
       } else if (nextJob.kind === 'convert') {
         await this.runConvertJob(nextJob, abortController.signal);
       }
@@ -194,6 +204,131 @@ class JobQueue {
     } finally {
       abortControllers.delete(nextJob.id);
     }
+  }
+
+  async runSoundCloudJob(job, abortSignal) {
+    this.updateProgress(job.id, { progress: 0, status: 'downloading' });
+
+    let extra = {};
+    try {
+      extra = typeof job.extra === 'string' ? JSON.parse(job.extra || '{}') : (job.extra || {});
+    } catch { }
+
+    const rawTarget = extra.soundcloudId || extra.youtubeId || job.url;
+    const resolved = await getSoundCloudStreamUrl(rawTarget);
+    if (!resolved?.streamUrl) {
+      throw new Error('Could not resolve SoundCloud stream URL');
+    }
+
+    const trackId = crypto.randomUUID();
+    const targetFilePath = path.join(config.MEDIA_DIR, `${trackId}.mp3`);
+
+    await downloadSoundCloudTrackDirect({
+      streamUrl: resolved.streamUrl,
+      outputPath: targetFilePath,
+      onProgress: p => {
+        this.updateProgress(job.id, {
+          progress: p.progress || 0,
+          speed: p.speed || '',
+          eta: p.eta || '',
+          status: 'downloading'
+        });
+      },
+      abortSignal
+    });
+
+    this.markProcessing(job.id);
+
+    const probe = await probeMedia(targetFilePath);
+    const meta = await extractMetadata(targetFilePath);
+    const stats = fs.statSync(targetFilePath);
+
+    // High quality artwork download
+    let thumbFilename = meta.thumbnailFile;
+    const candidateThumbs = [];
+    if (extra.thumbnail) candidateThumbs.push(extra.thumbnail);
+    if (extra.thumbnail_url) candidateThumbs.push(extra.thumbnail_url);
+    if (resolved.track?.thumbnail) candidateThumbs.push(resolved.track.thumbnail);
+
+    if (!thumbFilename && candidateThumbs.length > 0) {
+      for (const tUrl of candidateThumbs) {
+        try {
+          const tRes = await fetch(tUrl, { signal: AbortSignal.timeout(6000) });
+          if (tRes.ok) {
+            const buf = Buffer.from(await tRes.arrayBuffer());
+            if (buf && buf.length > 500) {
+              const tName = `thumb_${trackId}.jpg`;
+              fs.writeFileSync(path.join(config.THUMBS_DIR, tName), buf);
+              thumbFilename = tName;
+              break;
+            }
+          }
+        } catch { }
+      }
+    }
+
+    const finalTitle = (extra.title && extra.title !== 'SoundCloud Track' && extra.title !== 'YouTube Audio/Video')
+      ? extra.title
+      : (resolved.track?.title || meta.title || 'SoundCloud Track');
+    const finalArtist = (extra.artist && extra.artist !== 'SoundCloud' && extra.artist !== 'YouTube')
+      ? extra.artist
+      : (resolved.track?.artist || meta.artist || 'Nghệ sĩ');
+
+    // Insert into tracks table
+    db.prepare(`
+      INSERT INTO tracks (
+        id, user_id, title, artist, album, duration_sec, media_type, mime, file_path, file_size, 
+        thumbnail_path, width, height, source, source_url, original_ext, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'soundcloud', ?, ?, datetime('now'))
+    `).run(
+      trackId,
+      job.user_id || 'default',
+      finalTitle,
+      finalArtist,
+      resolved.track?.genre || meta.album || 'SoundCloud',
+      probe.durationSec || resolved.track?.duration_sec || meta.durationSec || 0,
+      'audio',
+      'audio/mpeg',
+      path.basename(targetFilePath),
+      stats.size,
+      thumbFilename,
+      null,
+      null,
+      job.url || (resolved.track?.url || ''),
+      '.mp3'
+    );
+
+    if (extra && extra.playlistId) {
+      try {
+        const maxPosRow = db.prepare('SELECT MAX(position) as maxPos FROM playlist_tracks WHERE playlist_id = ?').get(extra.playlistId);
+        const nextPos = (maxPosRow && maxPosRow.maxPos != null) ? maxPosRow.maxPos + 1 : 0;
+        db.prepare(`
+          INSERT OR IGNORE INTO playlist_tracks (playlist_id, track_id, position)
+          VALUES (?, ?, ?)
+        `).run(extra.playlistId, trackId, nextPos);
+        db.prepare("UPDATE playlists SET updated_at = datetime('now') WHERE id = ?").run(extra.playlistId);
+      } catch (plErr) {
+        console.warn('[Queue] Failed to add track to playlist:', plErr.message);
+      }
+    }
+
+    // Auto-fetch and cache lyrics for offline play
+    try {
+      const lyricsResult = await getLyrics({
+        trackId: trackId,
+        title: finalTitle,
+        artist: finalArtist,
+        duration: probe.durationSec || resolved.track?.duration_sec || 0
+      });
+      if (lyricsResult && (lyricsResult.syncedLyrics || lyricsResult.plainLyrics)) {
+        const lrcFile = path.join(config.MEDIA_DIR, `${trackId}.lrc`);
+        fs.writeFileSync(lrcFile, lyricsResult.syncedLyrics || lyricsResult.plainLyrics, 'utf8');
+      }
+    } catch (lErr) {
+      console.warn(`[Queue] Auto-lyrics notice for ${trackId}:`, lErr.message);
+    }
+
+    this.markDone(job.id, trackId);
   }
 
   async runYouTubeJob(job, abortSignal) {

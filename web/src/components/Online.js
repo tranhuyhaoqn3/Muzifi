@@ -34,11 +34,11 @@ export class OnlineView {
 
     this.container.innerHTML = `
       <div class="online-view">
-        <!-- Search Bar (YouTube Style with Suggestions) -->
+        <!-- Search Bar (SoundCloud Search with Suggestions) -->
         <div class="search-bar-row ytm-search-row" style="margin-bottom:14px;position:relative;">
           <div class="search-input-box" style="position:relative;">
             ${icons.search}
-            <input type="text" id="online-search-input" autocomplete="off" spellcheck="false" placeholder="Tìm kiếm bài hát, video trực tuyến..." value="${this.escapeHtml(this.currentQuery || '')}">
+            <input type="text" id="online-search-input" autocomplete="off" spellcheck="false" placeholder="Tìm kiếm bài hát, nghệ sĩ, remix trên SoundCloud..." value="${this.escapeHtml(this.currentQuery || '')}">
             <button id="online-search-clear" class="icon-btn" style="min-height:32px;min-width:32px;${this.currentQuery ? 'display:inline-flex;' : 'display:none;'}">${icons.x}</button>
           </div>
           <button id="btn-online-search-submit" class="btn-primary" style="min-height:44px;padding:0 18px;font-weight:600;">
@@ -48,11 +48,26 @@ export class OnlineView {
           <div id="search-suggestions-dropdown" class="search-suggestions-dropdown" style="display:none;"></div>
         </div>
 
+        <!-- SoundCloud Music Genre & Trend Chips -->
+        <div class="yt-chip-bar" id="online-topic-chips" style="margin-bottom:16px;">
+          <button class="yt-chip active" data-topic="">Tất cả</button>
+          <button class="yt-chip" data-topic="vpop">V-Pop Hot</button>
+          <button class="yt-chip" data-topic="sontung">Sơn Tùng M-TP</button>
+          <button class="yt-chip" data-topic="denvau">Đen Vâu</button>
+          <button class="yt-chip" data-topic="vu">Vũ.</button>
+          <button class="yt-chip" data-topic="rapviet">Rap Việt</button>
+          <button class="yt-chip" data-topic="remix">Remix TikTok</button>
+          <button class="yt-chip" data-topic="lofi">Lofi Chill</button>
+          <button class="yt-chip" data-topic="acoustic">Acoustic</button>
+          <button class="yt-chip" data-topic="usuk">US-UK</button>
+          <button class="yt-chip" data-topic="edm">EDM</button>
+        </div>
+
         <!-- Dynamic Feed & Content Area -->
         <div id="online-content-area">
           <div id="online-feed-list" class="yt-video-grid">
             <div class="empty-state" style="grid-column: 1 / -1;">
-              <p class="empty-title">Đang tải dữ liệu trực tuyến...</p>
+              <p class="empty-title">Đang tải nhạc trực tuyến từ SoundCloud...</p>
             </div>
           </div>
         </div>
@@ -65,7 +80,7 @@ export class OnlineView {
     if (items && items.length > 0) {
       this.renderVideoCards(items, Boolean(this.currentQuery));
     } else {
-      await this.fetchFeed();
+      await this.fetchFeed(this.activeTopic || '');
     }
   }
 
@@ -227,6 +242,20 @@ export class OnlineView {
       }
     });
 
+    const chipBar = document.getElementById('online-topic-chips');
+    chipBar?.querySelectorAll('.yt-chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        chipBar.querySelectorAll('.yt-chip').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this.activeTopic = btn.dataset.topic || '';
+        if (searchInput) searchInput.value = '';
+        this.currentQuery = '';
+        if (clearBtn) clearBtn.style.display = 'none';
+        hideDropdown();
+        this.fetchFeed(this.activeTopic);
+      });
+    });
+
     clearBtn?.addEventListener('click', () => {
       if (searchInput) searchInput.value = '';
       this.currentQuery = '';
@@ -236,7 +265,7 @@ export class OnlineView {
       if (this.feedItems && this.feedItems.length > 0) {
         this.renderVideoCards(this.feedItems, false);
       } else {
-        this.fetchFeed();
+        this.fetchFeed(this.activeTopic || '');
       }
     });
 
@@ -628,7 +657,7 @@ export class OnlineView {
 
     this.isSearch = false;
     try {
-      const feed = await api.youtube.getFeed(topic, { page: 1 });
+      const feed = await api.soundcloud.getFeed(topic, { page: 1 });
       this.feedItems = feed.items || [];
       this.allItems = [...this.feedItems];
       if (this.activeChip === 'all') {
@@ -668,7 +697,7 @@ export class OnlineView {
     }
 
     try {
-      const res = await api.youtube.search(query, { page: 1 });
+      const res = await api.soundcloud.search(query, { page: 1 });
       this.searchItems = res.items || [];
       this.allItems = [...this.searchItems];
       if (this.activeChip === 'all') {
@@ -807,8 +836,9 @@ export class OnlineView {
         if (this.player && this.player.downloadTrackAudio) {
           this.player.downloadTrackAudio({
             ...item,
-            id: `yt_${item.id}_audio`,
-            youtubeId: item.id,
+            id: `sc_${item.id}_audio`,
+            soundcloudId: String(item.id),
+            youtubeId: String(item.id),
             isOnline: true,
             thumbnail_url: item.thumbnail || item.thumbnail_url,
             artist: item.channel || item.artist || 'Nghệ sĩ'
@@ -816,19 +846,22 @@ export class OnlineView {
         } else if (this.player && this.player.showDownloadModalForTrack) {
           this.player.showDownloadModalForTrack({
             ...item,
-            id: `yt_${item.id}_audio`,
-            youtubeId: item.id,
+            id: `sc_${item.id}_audio`,
+            soundcloudId: String(item.id),
+            youtubeId: String(item.id),
             isOnline: true,
             thumbnail_url: item.thumbnail || item.thumbnail_url,
             artist: item.channel || item.artist || 'Nghệ sĩ'
           }, dlBtn);
         } else {
-          api.youtube.download({
-            url: item.url || `https://www.youtube.com/watch?v=${item.id}`,
+          api.soundcloud.download({
+            url: item.url || `https://soundcloud.com/tracks/${item.id}`,
+            id: item.id,
             mediaType: 'audio',
-            quality: '720p',
+            quality: 'HQ',
             title: item.title,
-            artist: item.channel
+            artist: item.channel || item.artist,
+            thumbnail: item.thumbnail || item.thumbnail_url
           }).then(() => {
             this.player?.showToast(`Đã thêm "${item.title}" vào tiến trình tải!`, 2500);
           }).catch(err => {
@@ -880,10 +913,10 @@ export class OnlineView {
     try {
       let newItems = [];
       if (this.currentQuery) {
-        const res = await api.youtube.search(this.currentQuery, { page: this.page });
+        const res = await api.soundcloud.search(this.currentQuery, { page: this.page });
         newItems = (res.items || []).filter(it => !this.renderedVideoIds.has(it.id));
       } else {
-        const feed = await api.youtube.getFeed('', { page: this.page });
+        const feed = await api.soundcloud.getFeed(this.activeTopic || '', { page: this.page });
         newItems = (feed.items || []).filter(it => !this.renderedVideoIds.has(it.id));
       }
 
@@ -909,12 +942,12 @@ export class OnlineView {
   formatViews(views) {
     if (!views) return '';
     if (views >= 1000000) {
-      return `${(views / 1000000).toFixed(1)}Tr lượt xem`;
+      return `${(views / 1000000).toFixed(1)}Tr lượt nghe`;
     }
     if (views >= 1000) {
-      return `${Math.round(views / 1000)}k lượt xem`;
+      return `${Math.round(views / 1000)}k lượt nghe`;
     }
-    return `${views} lượt xem`;
+    return `${views} lượt nghe`;
   }
 
   playOnline(item, mediaType = 'audio', allItems = null, isFromSearch = false) {
@@ -924,21 +957,20 @@ export class OnlineView {
     }
     store.set({ isPlaylistMode: false });
 
-    // SPOTIFY EXPERIENCE:
-    // When playing an individual track from home feed, search or trending:
-    // Seed the playback with this single track and immediately launch Spotify Song Radio
-    // so that Up Next is dynamically generated based on this exact song's artist, mood & genre!
+    // Seed playback with this SoundCloud track & trigger radio Up Next
     const singleTrack = {
-      id: `yt_${item.id}_${mediaType}`,
-      youtubeId: item.id,
+      id: `sc_${item.id}_audio`,
+      soundcloudId: String(item.id),
+      youtubeId: String(item.id),
       title: item.title,
       artist: item.channel || item.artist || 'Nghệ sĩ',
-      album: 'Radio Trực Tuyến',
+      album: 'SoundCloud Trực Tuyến',
       duration_sec: item.duration || 0,
-      media_type: mediaType,
+      media_type: 'audio',
       isOnline: true,
       thumbnail_url: item.thumbnail || item.thumbnail_url,
-      publishedTime: item.publishedTime || ''
+      publishedTime: item.publishedTime || '',
+      source: 'soundcloud'
     };
 
     store.set({ queue: [singleTrack], originalQueue: [singleTrack], isPlaylistMode: false });

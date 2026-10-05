@@ -191,7 +191,8 @@ self.addEventListener('fetch', (event) => {
   if (!url.protocol.startsWith('http')) return;
   if (event.request.method !== 'GET') return;
 
-  // ── Skip: YouTube / online endpoints (network only) ──
+  // ── Skip: SoundCloud & Online endpoints (network only) ──
+  if (url.pathname.startsWith('/api/soundcloud')) return;
   if (url.pathname.startsWith('/api/youtube')) return;
   // ── Skip: Jobs SSE stream ──
   if (url.pathname.startsWith('/api/jobs')) return;
