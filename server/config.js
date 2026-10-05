@@ -23,49 +23,9 @@ for (const dir of [DATA_DIR, MEDIA_DIR, THUMBS_DIR, TMP_DIR, CACHE_DIR]) {
   }
 }
 
-// Redirect process TEMP/TMP to data/tmp on E: drive so yt-dlp doesn't exhaust C: drive
+// Redirect process TEMP/TMP to data/tmp on E: drive
 process.env.TEMP = TMP_DIR;
 process.env.TMP = TMP_DIR;
-
-// Locate yt-dlp binary
-function findYtDlp() {
-  if (process.env.YTDLP_PATH && fs.existsSync(process.env.YTDLP_PATH)) {
-    return process.env.YTDLP_PATH;
-  }
-  // Check local data/bin
-  const localBin = path.join(DATA_DIR, 'bin', process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
-  if (fs.existsSync(localBin)) {
-    return localBin;
-  }
-  // Check Windows WinGet link
-  if (process.platform === 'win32') {
-    const localAppData = process.env.LOCALAPPDATA || 'C:\\Users\\Administrator\\AppData\\Local';
-    const wingetPath = path.join(localAppData, 'Microsoft', 'WinGet', 'Links', 'yt-dlp.exe');
-    if (fs.existsSync(wingetPath)) {
-      return wingetPath;
-    }
-  }
-  return 'yt-dlp';
-}
-
-// Locate deno binary for yt-dlp JavaScript challenge solver
-function findDeno() {
-  if (process.env.DENO_PATH && fs.existsSync(process.env.DENO_PATH)) {
-    return process.env.DENO_PATH;
-  }
-  if (process.platform === 'win32') {
-    const localAppData = process.env.LOCALAPPDATA || 'C:\\Users\\Administrator\\AppData\\Local';
-    const wingetPath = path.join(localAppData, 'Microsoft', 'WinGet', 'Links', 'deno.exe');
-    if (fs.existsSync(wingetPath)) {
-      return wingetPath;
-    }
-  }
-  const localDeno = path.join(DATA_DIR, 'bin', process.platform === 'win32' ? 'deno.exe' : 'deno');
-  if (fs.existsSync(localDeno)) {
-    return localDeno;
-  }
-  return null;
-}
 
 export const config = {
   PORT: parseInt(process.env.PORT || '3000', 10),
@@ -87,7 +47,5 @@ export const config = {
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || '',
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || '',
   GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI || '',
-  getYtDlpPath: findYtDlp,
-  getDenoPath: findDeno,
   MAX_UPLOAD_SIZE: 2 * 1024 * 1024 * 1024, // 2 GB
 };

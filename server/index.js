@@ -13,7 +13,6 @@ import { initDatabase } from './db.js';
 import authRouter from './routes/auth.js';
 import tracksRouter from './routes/tracks.js';
 import soundCloudRouter from './routes/soundcloud.js';
-import youtubeRouter from './routes/youtube.js';
 import jobsRouter from './routes/jobs.js';
 import playlistsRouter from './routes/playlists.js';
 import playerRouter from './routes/player.js';
@@ -53,8 +52,8 @@ app.use(cookieParser());
 // Mount API routes
 app.use('/api/auth', authRouter);
 app.use('/api/tracks', tracksRouter);
+app.use('/api/online', soundCloudRouter);
 app.use('/api/soundcloud', soundCloudRouter);
-app.use('/api/youtube', soundCloudRouter); // Route online streaming and search directly to SoundCloud
 app.use('/api/jobs', jobsRouter);
 app.use('/api/playlists', playlistsRouter);
 app.use('/api/player-state', playerRouter);

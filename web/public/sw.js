@@ -6,7 +6,7 @@
  * - Track List / Playlists / Auth: Network-first, cache fallback (offline library browse)
  * - Thumbnails: Stale-while-revalidate (fast + always fresh)
  * - Audio/Video Streams: Network-first, auto-background-cache after play, range-aware offline serving
- * - YouTube/Online: Network-only (skip caching)
+ * - Online: Network-only (skip caching)
  */
 
 const SHELL_CACHE = 'muzifi-shell-v1';
@@ -213,8 +213,9 @@ self.addEventListener('fetch', (event) => {
   if (!url.protocol.startsWith('http')) return;
   if (event.request.method !== 'GET') return;
 
-  // ── Skip: YouTube / online endpoints (network only) ──
-  if (url.pathname.startsWith('/api/youtube')) return;
+  // ── Skip: Online endpoints (network only) ──
+  if (url.pathname.startsWith('/api/online')) return;
+  if (url.pathname.startsWith('/api/soundcloud')) return;
   // ── Skip: Jobs SSE stream ──
   if (url.pathname.startsWith('/api/jobs')) return;
 

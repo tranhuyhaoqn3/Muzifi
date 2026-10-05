@@ -1,6 +1,6 @@
 /* ============================================================
    Muzifi — Clean Dark Design System
-   Inspired by Spotify / Apple Music / YouTube Music
+   Modern Premium Music Player
    ============================================================ */
 
 /* Local Plus Jakarta Sans Font Family (Zero CDN / Completely Local) */
@@ -405,7 +405,7 @@ button {
   color: var(--bg-main);
 }
 
-/* YouTube Filter Chips (Exact YouTube UI/UX) */
+/* Online Filter Chips */
 .yt-chip-bar {
   display: flex;
   gap: 8px;
@@ -1323,7 +1323,7 @@ button {
 .search-input-box input::placeholder { color: var(--text-muted); }
 .search-input-box svg { color: var(--text-muted); flex-shrink: 0; }
 
-/* YouTube Music Search Suggestions Dropdown */
+/* Online Music Search Suggestions Dropdown */
 .search-suggestions-dropdown {
   position: absolute;
   top: calc(100% + 6px);
@@ -1829,7 +1829,7 @@ button {
   cursor: default;
 }
 
-/* ── YouTube Music Design System ── */
+/* ── Modern Music Design System ── */
 
 /* Top bar speed pill */
 .topbar-pill-btn {
@@ -2025,7 +2025,7 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
-/* ── Online / YouTube Grid ── */
+/* ── Online Music Grid ── */
 .yt-video-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));

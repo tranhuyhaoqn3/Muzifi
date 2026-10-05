@@ -88,11 +88,11 @@ export class PlayerEngine {
     this.closeBtn = document.getElementById('player-btn-close');
     this.dragHandle = document.getElementById('player-drag-handle');
 
-    // YouTube Music Bottom Tabs
+    // Player Bottom Tabs
     this.tabUpNextBtn = document.getElementById('tab-btn-upnext');
     this.tabLyricsBtn = document.getElementById('tab-btn-lyrics');
 
-    // Up Next Overlay (YouTube Music style)
+    // Up Next Overlay
     this.upNextView = document.getElementById('player-upnext-view');
     this.upNextCloseBtn = document.getElementById('btn-upnext-close');
     this.upNextDragHandle = document.getElementById('upnext-drag-handle');
@@ -300,7 +300,7 @@ export class PlayerEngine {
       this.nextBtn.addEventListener('click', () => this.next());
     }
 
-    // Double-tap on video container to seek ±10s (like YouTube)
+    // Double-tap on video container to seek ±10s
     if (this.videoView) {
       this.videoView.addEventListener('click', (e) => {
         if (e.target.closest('#video-overlay-ctrls')) return;
@@ -345,7 +345,7 @@ export class PlayerEngine {
       this.sleepBtn.addEventListener('click', () => this.showSleepTimerModal());
     }
 
-    // YouTube Music Tabs & Overlays
+    // Player Tabs & Overlays
     if (this.tabUpNextBtn) {
       this.tabUpNextBtn.addEventListener('click', () => this.toggleUpNext());
     }
@@ -632,8 +632,8 @@ export class PlayerEngine {
       this.showPlayerLoading('Đang tải...');
     }
 
-    const streamId = onlineTrack.soundcloudId || onlineTrack.youtubeId || onlineTrack.id;
-    const streamUrl = this.getAuthStreamUrl(`/api/soundcloud/stream?v=${encodeURIComponent(streamId)}&type=audio`);
+    const streamId = onlineTrack.onlineId || onlineTrack.soundcloudId || onlineTrack.id;
+    const streamUrl = this.getAuthStreamUrl(`/api/online/stream?v=${encodeURIComponent(streamId)}&type=audio`);
 
     // DO NOT call this.audio.pause()! Swapping src and calling load/play preserves background audio session
     if (this.video) this.video.pause();
@@ -841,8 +841,9 @@ export class PlayerEngine {
 
   async showQualityModal() {
     const { currentTrack } = store.get();
-    if (!currentTrack || !currentTrack.youtubeId) {
-      this.showToast('Chỉ áp dụng cho video trực tuyến', 1500);
+    const targetId = currentTrack?.onlineId || currentTrack?.soundcloudId || currentTrack?.id;
+    if (!currentTrack || !currentTrack.isOnline || !targetId) {
+      this.showToast('Chỉ áp dụng cho bài hát trực tuyến', 1500);
       return;
     }
 
@@ -858,7 +859,7 @@ export class PlayerEngine {
                 <circle cx="12" cy="12" r="3"/>
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
               </svg>
-              Chất lượng video
+              Chất lượng âm thanh
             </h3>
             <button class="quality-modal-close" id="quality-modal-close">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
@@ -880,14 +881,11 @@ export class PlayerEngine {
 
     // Fetch available qualities (with reliable fallback)
     try {
-      const res = await (api.youtube.getQualities ? api.youtube.getQualities(currentTrack.youtubeId) : api.get(`/api/youtube/qualities?v=${encodeURIComponent(currentTrack.youtubeId)}`)).catch(() => ({}));
+      const res = await (api.online.getQualities ? api.online.getQualities(targetId) : api.get(`/api/online/qualities?v=${encodeURIComponent(targetId)}`)).catch(() => ({}));
       let qualities = res?.qualities || [];
       if (!Array.isArray(qualities) || qualities.length === 0) {
         qualities = [
-          { height: 1080, label: '1080p HD' },
-          { height: 720, label: '720p HD' },
-          { height: 480, label: '480p' },
-          { height: 360, label: '360p' }
+          { height: 0, label: 'HQ Audio (MP3 128kbps)' }
         ];
       }
       
@@ -990,8 +988,8 @@ export class PlayerEngine {
     const wasPlaying = !this.activeMedia.paused;
 
     // Rebuild stream URL with new quality
-    const qualityParam = quality ? `&quality=${quality}` : '';
-    const newStreamUrl = this.getAuthStreamUrl(`/api/youtube/stream?v=${encodeURIComponent(currentTrack.youtubeId)}&type=video${qualityParam}`);
+    const targetId = currentTrack.onlineId || currentTrack.soundcloudId || currentTrack.id;
+    const newStreamUrl = this.getAuthStreamUrl(`/api/online/stream?v=${encodeURIComponent(targetId)}&type=audio`);
 
     this.showToast(quality === 0 ? 'Đang chuyển sang chất lượng tự động...' : `Đang chuyển sang ${quality}p...`, 2000);
 
@@ -1080,7 +1078,7 @@ export class PlayerEngine {
     if (!queue || queue.length === 0) return;
 
     const currentIndex = queue.findIndex(t => 
-      t.id === currentTrack?.id || (t.youtubeId && currentTrack?.youtubeId && t.youtubeId === currentTrack.youtubeId)
+      t.id === currentTrack?.id
     );
     let nextIndex = currentIndex !== -1 ? currentIndex + 1 : 0;
 
@@ -1103,50 +1101,46 @@ export class PlayerEngine {
         if (navigator.onLine) {
           // Continuous Spotify Autoplay for Online tracks only
           try {
-            let scId = currentTrack?.soundcloudId || currentTrack?.youtubeId;
+            let scId = currentTrack?.onlineId || currentTrack?.soundcloudId;
             if (!scId && currentTrack?.source_url) {
               const m = currentTrack.source_url.match(/(?:tracks\/|v=)([a-zA-Z0-9_-]+)/);
               if (m) scId = m[1];
             }
             if (!scId && currentTrack?.title) {
-              const sr = await api.soundcloud.search(`${currentTrack.title} ${currentTrack.artist || ''}`.trim(), { limit: 1 });
+              const sr = await api.online.search(`${currentTrack.title} ${currentTrack.artist || ''}`.trim(), { limit: 1 });
               scId = sr?.items?.[0]?.id;
             }
 
             if (scId) {
-              const res = await api.soundcloud.getRelated(scId);
+              const res = await api.online.getRelated(scId);
               if (res?.items && res.items.length > 0) {
                 const currentMediaType = currentTrack?.media_type || 'audio';
                 const newTracks = res.items
                   .filter(it => it.id !== scId)
                   .map(it => ({
-                    id: `sc_${it.id}_${currentMediaType}`,
+                    id: `online_${it.id}_${currentMediaType}`,
+                    onlineId: it.id,
                     soundcloudId: it.id,
-                    youtubeId: it.id,
                     title: it.title,
                     artist: it.channel || it.artist || 'Nghệ sĩ',
-                    album: res.topic || res.genre || 'SoundCloud Radio',
+                    album: 'Nhạc Trực Tuyến',
                     genre: res.genre || '',
-                    duration_sec: it.duration || 0,
+                    duration_sec: it.duration || it.duration_sec || 0,
                     media_type: currentMediaType,
                     isOnline: true,
-                    thumbnail_url: it.thumbnail,
-                    source: 'soundcloud'
+                    thumbnail_url: it.thumbnail || it.thumbnail_url,
+                    source: 'online'
                   }));
 
-                const existingIds = new Set(queue.map(t => t.soundcloudId || t.youtubeId || (t.id && t.id.replace(/^(sc_|yt_)/, '').split('_')[0])));
-                const freshTracks = newTracks.filter(t => !existingIds.has(t.soundcloudId));
-                const toAdd = freshTracks.length > 0 ? freshTracks : newTracks.filter(t => t.soundcloudId !== scId);
+                const existingIds = new Set(queue.map(t => t.onlineId || t.soundcloudId || (t.id && t.id.replace(/^(sc_|yt_|online_)/, '').split('_')[0])));
+                const freshTracks = newTracks.filter(t => !existingIds.has(t.onlineId || t.soundcloudId));
+                const toAdd = freshTracks.length > 0 ? freshTracks : newTracks.filter(t => (t.onlineId || t.soundcloudId) !== scId);
 
                 if (toAdd.length > 0) {
                   const updatedQueue = [...queue, ...toAdd];
                   store.set({ queue: updatedQueue, originalQueue: updatedQueue });
 
                   const nextTrack = toAdd[0];
-                  if (res.genre) {
-                    nextTrack.genre = res.genre;
-                    nextTrack.topic = res.topic;
-                  }
                   this.loadOnlineTrack(nextTrack);
                   return;
                 }
@@ -1189,7 +1183,7 @@ export class PlayerEngine {
     if (!queue || queue.length === 0) return;
 
     const currentIndex = queue.findIndex(t => 
-      t.id === currentTrack?.id || (t.youtubeId && currentTrack?.youtubeId && t.youtubeId === currentTrack.youtubeId)
+      t.id === currentTrack?.id
     );
     let prevIndex = currentIndex - 1;
     if (prevIndex < 0) {
@@ -1271,7 +1265,7 @@ export class PlayerEngine {
     if (!queue || queue.length === 0) return;
 
     const currentIndex = queue.findIndex(t => 
-      t.id === currentTrack?.id || (t.youtubeId && currentTrack?.youtubeId && t.youtubeId === currentTrack.youtubeId)
+      t.id === currentTrack?.id
     );
     if (currentIndex === -1) return;
 
@@ -1285,12 +1279,12 @@ export class PlayerEngine {
 
     if (this.preloadedTrackId === nextTrack.id) return;
 
-    const onlineId = nextTrack.soundcloudId || nextTrack.youtubeId;
+    const onlineId = nextTrack.onlineId || nextTrack.soundcloudId;
     if (nextTrack.isOnline && onlineId && navigator.onLine) {
       this.preloadedTrackId = nextTrack.id;
       const mediaType = nextTrack.media_type || 'audio';
       // Preload on server so disk cache is ready before current track ends
-      api.soundcloud.preload({ v: onlineId, type: mediaType }).catch(err => {
+      api.online.preload({ v: onlineId, type: mediaType }).catch(err => {
         console.warn('[Preload] Server preload notice:', err);
       });
     } else if (!nextTrack.isOnline && nextTrack.id) {
@@ -1340,10 +1334,10 @@ export class PlayerEngine {
     }
 
     const { currentTrack, queue } = store.get();
-    const targetOnlineId = currentTrack?.soundcloudId || currentTrack?.youtubeId;
+    const targetOnlineId = currentTrack?.onlineId || currentTrack?.soundcloudId;
     if (currentTrack?.isOnline && targetOnlineId) {
       try {
-        const streamUrl = this.getAuthStreamUrl(`/api/soundcloud/stream?v=${encodeURIComponent(targetOnlineId)}&type=${currentTrack.media_type || 'audio'}`);
+        const streamUrl = this.getAuthStreamUrl(`/api/online/stream?v=${encodeURIComponent(targetOnlineId)}&type=${currentTrack.media_type || 'audio'}`);
         const checkRes = await fetch(streamUrl);
         if (!checkRes.ok) {
           let errData = {};
@@ -1803,10 +1797,8 @@ export class PlayerEngine {
     } catch {}
 
     try {
-      const ytId = track.youtubeId || (track.id && track.id.startsWith('yt_') ? track.id.split('_')[1] : '');
       const res = await api.lyrics.get({
         trackId: track.isOnline ? '' : track.id,
-        youtubeId: ytId,
         title: track.title,
         artist: track.artist || '',
         duration: track.duration_sec || 0
@@ -1954,10 +1946,9 @@ export class PlayerEngine {
       </div>
       <div style="display:flex;flex-direction:column;">
         ${queue.map((track, idx) => {
-          const isPlaying = (track.id === currentTrack?.id) || 
-            (track.youtubeId && currentTrack?.youtubeId && track.youtubeId === currentTrack.youtubeId);
+          const isPlaying = (track.id === currentTrack?.id);
           const thumb = track.isOnline
-            ? (track.thumbnail_url || `https://i.ytimg.com/vi/${track.youtubeId}/hqdefault.jpg`)
+            ? (track.thumbnail_url || '')
             : `/api/tracks/${track.id}/thumb`;
 
           return `
@@ -2063,10 +2054,10 @@ export class PlayerEngine {
     const startSource = sourceEl || this.playerDownloadBtn || document.getElementById('player-thumb');
     animateFlyToCorner(startSource, track);
 
-    let soundcloudId = track.soundcloudId || track.youtubeId;
+    let soundcloudId = track.onlineId || track.soundcloudId;
     if (!soundcloudId && track.id) {
       if (typeof track.id === 'string') {
-        if (track.id.startsWith('sc_') || track.id.startsWith('yt_')) {
+        if (track.id.startsWith('sc_') || track.id.startsWith('yt_') || track.id.startsWith('online_')) {
           soundcloudId = track.id.split('_')[1];
         } else {
           soundcloudId = track.id;
@@ -2093,7 +2084,7 @@ export class PlayerEngine {
     const artist = track.artist || track.channel || '';
     this.showToast(`Đang thêm audio "${title}" vào tiến trình tải...`, 2000);
     try {
-      await api.soundcloud.download({
+      await api.online.download({
         url: track.url || (soundcloudId ? `https://soundcloud.com/tracks/${soundcloudId}` : null),
         id: soundcloudId,
         mediaType: 'audio',
@@ -2128,26 +2119,24 @@ export class PlayerEngine {
     if (isPlaylistMode || track.isPlaylist || isLibraryQueue || !track.isOnline) return;
     if (this.isFetchingSimilar) return;
 
-    let youtubeId = track.youtubeId;
-    if (!youtubeId && track.source_url) {
-      const match = track.source_url.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
-      if (match) youtubeId = match[1];
+    let onlineId = track.onlineId || track.soundcloudId;
+    if (!onlineId && track.id) {
+      onlineId = String(track.id).replace(/^(sc_|yt_|online_)/, '').split('_')[0];
     }
 
-    // If it's a library track without YouTube ID, search YouTube to find its matching seed ID
-    if (!youtubeId && track.title && navigator.onLine) {
+    if (!onlineId && track.title && navigator.onLine) {
       try {
         const query = `${track.title} ${track.artist || ''}`.trim();
-        const searchRes = await api.youtube.search(query, { limit: 1 });
+        const searchRes = await api.online.search(query, { limit: 1 });
         if (searchRes?.items?.[0]?.id) {
-          youtubeId = searchRes.items[0].id;
+          onlineId = searchRes.items[0].id;
         }
       } catch (err) {
-        console.warn('Could not resolve YouTube ID for track:', err);
+        console.warn('Could not resolve online ID for track:', err);
       }
     }
 
-    if (!youtubeId) return;
+    if (!onlineId) return;
 
     this.isFetchingSimilar = true;
     if (this.upNextView && this.upNextView.style.display !== 'none') {
@@ -2155,40 +2144,35 @@ export class PlayerEngine {
     }
 
     try {
-      const res = await api.youtube.getRelated(youtubeId);
+      const res = await api.online.getRelated(onlineId);
       const current = store.get().currentTrack;
-      if (!current || (current.id !== track.id && current.youtubeId !== youtubeId)) return;
+      if (!current || (current.id !== track.id && (current.onlineId || current.soundcloudId) !== onlineId)) return;
 
-      if (res) {
-        if (res.genre) {
-          this.updateTrackGenre(res.genre, res.topic, res.isMusic, res.chips || []);
-        }
+      if (res && res.items && res.items.length > 0) {
+        const mediaType = track.media_type || 'audio';
+        const similarTracks = res.items
+          .filter(it => it.id !== onlineId)
+          .map(it => ({
+            id: `online_${it.id}_${mediaType}`,
+            onlineId: it.id,
+            soundcloudId: it.id,
+            title: it.title,
+            artist: it.channel || it.artist || 'Nghệ sĩ',
+            album: 'Nhạc Trực Tuyến',
+            genre: res.genre || '',
+            duration_sec: it.duration || it.duration_sec || 0,
+            media_type: mediaType,
+            isOnline: true,
+            thumbnail_url: it.thumbnail || it.thumbnail_url,
+          }));
 
-        if (res.items && res.items.length > 0) {
-          const mediaType = track.media_type || 'audio';
-          const similarTracks = res.items
-            .filter(it => it.id !== youtubeId)
-            .map(it => ({
-              id: `yt_${it.id}_${mediaType}`,
-              youtubeId: it.id,
-              title: it.title,
-              artist: it.channel || 'Nghệ sĩ',
-              album: res.topic || res.genre || 'Radio Trực Tuyến',
-              genre: res.genre || '',
-              duration_sec: it.duration || 0,
-              media_type: mediaType,
-              isOnline: true,
-              thumbnail_url: it.thumbnail,
-            }));
+        const { queue } = store.get();
+        const existingIds = new Set(queue.map(t => t.onlineId || t.soundcloudId || (t.id && t.id.replace(/^(sc_|yt_|online_)/, '').split('_')[0])));
+        const fresh = similarTracks.filter(t => !existingIds.has(t.onlineId || t.soundcloudId));
 
-          const { queue } = store.get();
-          const existingIds = new Set(queue.map(t => t.youtubeId || (t.id && t.id.replace('yt_', '').split('_')[0])));
-          const fresh = similarTracks.filter(t => !existingIds.has(t.youtubeId));
-
-          if (fresh.length > 0) {
-            const updated = [...queue, ...fresh];
-            store.set({ queue: updated, originalQueue: updated });
-          }
+        if (fresh.length > 0) {
+          const updated = [...queue, ...fresh];
+          store.set({ queue: updated, originalQueue: updated });
         }
       }
     } catch (e) {

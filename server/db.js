@@ -23,7 +23,7 @@ export function initDatabase() {
       thumbnail_path TEXT,
       width INTEGER,
       height INTEGER,
-      source TEXT NOT NULL CHECK(source IN ('upload', 'youtube', 'soundcloud')),
+      source TEXT NOT NULL CHECK(source IN ('upload', 'online', 'soundcloud', 'youtube')),
       source_url TEXT,
       original_ext TEXT,
       created_at TEXT NOT NULL,
@@ -48,7 +48,7 @@ export function initDatabase() {
 
     CREATE TABLE IF NOT EXISTS jobs (
       id TEXT PRIMARY KEY,
-      kind TEXT NOT NULL CHECK(kind IN ('youtube', 'convert', 'soundcloud')),
+      kind TEXT NOT NULL CHECK(kind IN ('online', 'soundcloud', 'convert', 'youtube')),
       url TEXT,
       media_type TEXT,
       quality TEXT,
@@ -99,15 +99,6 @@ export function initDatabase() {
       loop_mode TEXT DEFAULT 'off',
       shuffle INTEGER DEFAULT 0,
       rate REAL DEFAULT 1.0,
-      updated_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS user_youtube_data (
-      user_id TEXT PRIMARY KEY,
-      subscriptions TEXT DEFAULT '[]',
-      liked_videos TEXT DEFAULT '[]',
-      playlists TEXT DEFAULT '[]',
-      cookies TEXT DEFAULT '',
       updated_at TEXT NOT NULL
     );
 
@@ -234,7 +225,6 @@ export function initDatabase() {
     ['default_video_quality', '720p'],
     ['seek_step', '10'],
     ['max_concurrent_jobs', '2'],
-    ['ytdlp_cookies', ''],
     ['theme', 'dark'],
     ['google_client_id', config.GOOGLE_CLIENT_ID || ''],
     ['google_client_secret', config.GOOGLE_CLIENT_SECRET || ''],

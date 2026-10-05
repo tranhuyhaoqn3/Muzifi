@@ -6,9 +6,9 @@ export class AddMediaModal {
   constructor(onSuccess) {
     this.onSuccess = onSuccess;
     this.container = document.getElementById('modal-container');
-    this.activeTab = 'upload'; // 'upload' | 'youtube'
+    this.activeTab = 'upload'; // 'upload' | 'online'
     this.currentXhr = null;
-    this.ytPrefetchedInfo = null;
+    this.onlinePrefetchedInfo = null;
   }
 
   show() {
@@ -24,7 +24,7 @@ export class AddMediaModal {
               <button class="pill-btn ${this.activeTab === 'upload' ? 'active' : ''}" id="tab-upload">
                 Tải lên từ máy
               </button>
-              <button class="pill-btn ${this.activeTab === 'youtube' ? 'active' : ''}" id="tab-youtube">
+              <button class="pill-btn ${this.activeTab === 'online' ? 'active' : ''}" id="tab-online">
                 Tải từ liên kết
               </button>
             </div>
@@ -32,7 +32,7 @@ export class AddMediaModal {
           </div>
 
           <div class="modal-body" id="add-media-body">
-            ${this.activeTab === 'upload' ? this.renderUploadTab() : this.renderYouTubeTab()}
+            ${this.activeTab === 'upload' ? this.renderUploadTab() : this.renderOnlineTab()}
           </div>
         </div>
       </div>
@@ -46,219 +46,199 @@ export class AddMediaModal {
       this.render();
     });
 
-    overlay.querySelector('#tab-youtube').addEventListener('click', () => {
-      this.activeTab = 'youtube';
+    overlay.querySelector('#tab-online').addEventListener('click', () => {
+      this.activeTab = 'online';
       this.render();
     });
 
     if (this.activeTab === 'upload') {
       this.bindUploadEvents();
     } else {
-      this.bindYouTubeEvents();
+      this.bindOnlineEvents();
     }
   }
 
   renderUploadTab() {
     return `
-      <div class="upload-zone">
-        <div id="drop-area" style="border:2px dashed var(--border-subtle);border-radius:var(--radius-lg);padding:32px 16px;text-align:center;cursor:pointer;background:var(--bg-surface);transition:all 0.2s ease;">
-          <div style="color:var(--accent-primary);margin-bottom:12px;">
-            <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="17 8 12 3 7 8" />
-              <line x1="12" y1="3" x2="12" y2="15" />
-            </svg>
-          </div>
-          <p style="font-weight:600;font-size:1rem;margin-bottom:6px;">Chạm hoặc kéo thả file vào đây</p>
-          <p style="font-size:0.8rem;color:var(--text-muted);">
-            Hỗ trợ Audio (.mp3, .m4a, .aac, .flac, .wav...) & Video (.mp4, .mov, .mkv, .webm...). 
-            Định dạng lạ sẽ tự chuyển đổi sang chuẩn iOS.
-          </p>
-          <input type="file" id="file-input" multiple accept="audio/*,video/*,.mkv,.webm,.flac,.ogg,.opus,.wma" style="display:none;">
+      <div class="upload-zone" id="drop-zone" style="border:2px dashed var(--border-color);border-radius:var(--radius-lg);padding:32px 16px;text-align:center;cursor:pointer;transition:border-color 0.2s, background-color 0.2s;">
+        <input type="file" id="file-input" multiple accept="audio/*,video/*" style="display:none;">
+        <div style="display:flex;justify-content:center;margin-bottom:12px;color:var(--accent-primary);">
+          <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
         </div>
+        <p style="font-weight:600;font-size:0.95rem;margin-bottom:4px;">Kéo thả tệp vào đây hoặc nhấn để duyệt</p>
+        <p style="font-size:0.8rem;color:var(--text-muted);margin:0;">Hỗ trợ MP3, M4A, FLAC, AAC, WAV, MP4, MKV...</p>
+      </div>
 
-        <div id="selected-files-list" style="margin-top:16px;max-height:180px;overflow-y:auto;display:none;flex-direction:column;gap:6px;"></div>
-
-        <!-- Progress Bar -->
-        <div id="upload-progress-box" style="margin-top:16px;display:none;">
-          <div style="display:flex;justify-content:space-between;font-size:0.85rem;margin-bottom:6px;">
-            <span id="upload-status-text">Đang tải lên...</span>
-            <span id="upload-percent-text">0%</span>
-          </div>
-          <div style="height:8px;background:var(--border-subtle);border-radius:4px;overflow:hidden;">
-            <div id="upload-bar-fill" style="height:100%;width:0%;background:var(--accent-gradient);transition:width 0.15s ease;"></div>
-          </div>
+      <div id="upload-progress-container" style="display:none;margin-top:20px;">
+        <div style="display:flex;justify-content:space-between;font-size:0.85rem;margin-bottom:6px;">
+          <span id="upload-status-text">Đang tải lên...</span>
+          <span id="upload-percent-text">0%</span>
         </div>
-
-        <div style="margin-top:20px;display:flex;justify-content:flex-end;gap:12px;">
-          <button class="pill-btn" id="btn-cancel-upload" style="display:none;">Hủy tải</button>
-          <button class="btn-primary" id="btn-start-upload" disabled>Tải lên</button>
+        <div class="progress-bar-bg" style="height:6px;background:var(--bg-elevated);border-radius:3px;overflow:hidden;">
+          <div id="upload-progress-fill" style="width:0%;height:100%;background:var(--accent-primary);transition:width 0.1s linear;"></div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-top:10px;">
+          <button class="pill-btn" id="btn-cancel-upload" style="font-size:0.8rem;padding:4px 12px;">Hủy tải lên</button>
         </div>
       </div>
     `;
   }
 
   bindUploadEvents() {
-    const dropArea = document.getElementById('drop-area');
+    const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
-    const filesList = document.getElementById('selected-files-list');
-    const startBtn = document.getElementById('btn-start-upload');
-    const cancelBtn = document.getElementById('btn-cancel-upload');
-    const progressBox = document.getElementById('upload-progress-box');
-    const barFill = document.getElementById('upload-bar-fill');
+    const progressContainer = document.getElementById('upload-progress-container');
+    const progressFill = document.getElementById('upload-progress-fill');
     const percentText = document.getElementById('upload-percent-text');
     const statusText = document.getElementById('upload-status-text');
+    const cancelBtn = document.getElementById('btn-cancel-upload');
 
-    let filesToUpload = [];
+    dropZone.addEventListener('click', () => fileInput.click());
 
-    dropArea.addEventListener('click', () => fileInput.click());
-
-    dropArea.addEventListener('dragover', (e) => {
+    dropZone.addEventListener('dragover', (e) => {
       e.preventDefault();
-      dropArea.style.borderColor = 'var(--accent-primary)';
+      dropZone.style.borderColor = 'var(--accent-primary)';
+      dropZone.style.backgroundColor = 'var(--bg-elevated)';
     });
 
-    dropArea.addEventListener('dragleave', () => {
-      dropArea.style.borderColor = 'var(--border-subtle)';
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.style.borderColor = 'var(--border-color)';
+      dropZone.style.backgroundColor = 'transparent';
     });
 
-    dropArea.addEventListener('drop', (e) => {
+    dropZone.addEventListener('drop', (e) => {
       e.preventDefault();
-      dropArea.style.borderColor = 'var(--border-subtle)';
-      if (e.dataTransfer.files) {
-        handleFiles(Array.from(e.dataTransfer.files));
+      dropZone.style.borderColor = 'var(--border-color)';
+      dropZone.style.backgroundColor = 'transparent';
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        this.uploadFiles(e.dataTransfer.files);
       }
     });
 
     fileInput.addEventListener('change', () => {
-      if (fileInput.files) {
-        handleFiles(Array.from(fileInput.files));
+      if (fileInput.files && fileInput.files.length > 0) {
+        this.uploadFiles(fileInput.files);
       }
     });
 
-    const handleFiles = (files) => {
-      filesToUpload = files;
-      if (files.length === 0) {
-        filesList.style.display = 'none';
-        startBtn.disabled = true;
-        return;
+    cancelBtn.addEventListener('click', () => {
+      if (this.currentXhr) {
+        this.currentXhr.abort();
+        this.currentXhr = null;
       }
-
-      filesList.style.display = 'flex';
-      startBtn.disabled = false;
-      startBtn.textContent = `Tải lên ${files.length} file`;
-
-      filesList.innerHTML = files.map((f, i) => `
-        <div style="display:flex;justify-content:space-between;padding:6px 12px;background:var(--bg-surface);border-radius:var(--radius-sm);font-size:0.85rem;">
-          <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:320px;">${f.name}</span>
-          <span style="color:var(--text-muted);">${(f.size / (1024 * 1024)).toFixed(1)} MB</span>
-        </div>
-      `).join('');
-    };
-
-    startBtn.addEventListener('click', async () => {
-      if (filesToUpload.length === 0) return;
-
-      const formData = new FormData();
-      for (const file of filesToUpload) {
-        formData.append('files', file);
-      }
-
-      startBtn.disabled = true;
-      cancelBtn.style.display = 'inline-flex';
-      progressBox.style.display = 'block';
-
-      try {
-        statusText.textContent = `Đang tải lên ${filesToUpload.length} file...`;
-        await api.tracks.upload(formData, (percent) => {
-          barFill.style.width = `${percent}%`;
-          percentText.textContent = `${percent}%`;
-          if (percent >= 100) {
-            statusText.textContent = 'Đang xử lý & phân loại định dạng...';
-          }
-        });
-
-        statusText.textContent = 'Hoàn tất!';
-        setTimeout(() => {
-          document.getElementById('add-media-overlay').remove();
-          if (this.onSuccess) this.onSuccess();
-        }, 800);
-      } catch (err) {
-        statusText.textContent = 'Lỗi: ' + err.message;
-        startBtn.disabled = false;
-        cancelBtn.style.display = 'none';
-      }
+      progressContainer.style.display = 'none';
+      dropZone.style.display = 'block';
     });
   }
 
-  renderYouTubeTab() {
+  async uploadFiles(fileList) {
+    const dropZone = document.getElementById('drop-zone');
+    const progressContainer = document.getElementById('upload-progress-container');
+    const progressFill = document.getElementById('upload-progress-fill');
+    const percentText = document.getElementById('upload-percent-text');
+    const statusText = document.getElementById('upload-status-text');
+
+    dropZone.style.display = 'none';
+    progressContainer.style.display = 'block';
+
+    const formData = new FormData();
+    for (let i = 0; i < fileList.length; i++) {
+      formData.append('files', fileList[i]);
+    }
+
+    try {
+      statusText.textContent = `Đang tải lên ${fileList.length} tệp...`;
+      await api.tracks.upload(formData, (percent) => {
+        progressFill.style.width = `${percent}%`;
+        percentText.textContent = `${percent}%`;
+        if (percent >= 100) {
+          statusText.textContent = 'Đang xử lý và trích xuất thẻ metadata...';
+        }
+      });
+
+      document.getElementById('add-media-overlay').remove();
+      if (this.onSuccess) this.onSuccess();
+    } catch (err) {
+      if (err.message !== 'Upload canceled by user') {
+        alert('Lỗi tải lên: ' + err.message);
+        dropZone.style.display = 'block';
+        progressContainer.style.display = 'none';
+      }
+    }
+  }
+
+  renderOnlineTab() {
     return `
-      <div class="youtube-zone">
+      <div class="online-zone">
         <div class="form-group">
-          <label class="form-label">Dán liên kết trực tuyến (Video, Danh sách phát, Âm nhạc)</label>
+          <label class="form-label">Dán liên kết trực tuyến (Bài hát, Danh sách phát)</label>
           <div style="display:flex;gap:8px;">
-            <input type="url" id="yt-url-input" class="form-input" placeholder="https://..." autofocus>
-            <button class="btn-primary" id="btn-yt-check" style="flex-shrink:0;">Kiểm tra</button>
+            <input type="url" id="online-url-input" class="form-input" placeholder="https://..." autofocus>
+            <button class="btn-primary" id="btn-online-check" style="flex-shrink:0;">Kiểm tra</button>
           </div>
         </div>
 
-        <div id="yt-preview-area" style="display:none;margin-top:16px;"></div>
+        <div id="online-preview-area" style="display:none;margin-top:16px;"></div>
 
-        <div id="yt-options-area" style="display:none;margin-top:16px;border-top:1px solid var(--border-subtle);padding-top:16px;">
-          <div id="yt-playlist-extra" style="display:none;">
+        <div id="online-options-area" style="display:none;margin-top:16px;border-top:1px solid var(--border-subtle);padding-top:16px;">
+          <div id="online-playlist-extra" style="display:none;">
             <div class="form-group">
               <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-                <input type="checkbox" id="yt-create-playlist-cb" checked>
+                <input type="checkbox" id="online-create-playlist-cb" checked>
                 <span>Tạo playlist tương ứng trong app</span>
               </label>
             </div>
-            <div class="form-group" id="yt-playlist-name-group">
+            <div class="form-group" id="online-playlist-name-group">
               <label class="form-label">Tên playlist</label>
-              <input type="text" id="yt-playlist-name" class="form-input" value="">
+              <input type="text" id="online-playlist-name" class="form-input" value="">
             </div>
           </div>
 
           <div style="margin-top:20px;display:flex;justify-content:flex-end;">
-            <button class="btn-primary" id="btn-yt-download">Tải audio (m4a)</button>
+            <button class="btn-primary" id="btn-online-download">Tải audio (HQ)</button>
           </div>
         </div>
       </div>
     `;
   }
 
-  bindYouTubeEvents() {
-    const checkBtn = document.getElementById('btn-yt-check');
-    const urlInput = document.getElementById('yt-url-input');
-    const previewArea = document.getElementById('yt-preview-area');
-    const optionsArea = document.getElementById('yt-options-area');
-    const playlistExtra = document.getElementById('yt-playlist-extra');
-    const plNameInput = document.getElementById('yt-playlist-name');
-    const downloadBtn = document.getElementById('btn-yt-download');
+  bindOnlineEvents() {
+    const checkBtn = document.getElementById('btn-online-check');
+    const urlInput = document.getElementById('online-url-input');
+    const previewArea = document.getElementById('online-preview-area');
+    const optionsArea = document.getElementById('online-options-area');
+    const playlistExtra = document.getElementById('online-playlist-extra');
+    const plNameInput = document.getElementById('online-playlist-name');
+    const downloadBtn = document.getElementById('btn-online-download');
 
-    checkBtn.addEventListener('click', async () => {
+    checkBtn?.addEventListener('click', async () => {
       const url = urlInput.value.trim();
-      if (!url) return alert('Vui lòng dán đường link YouTube');
+      if (!url) return alert('Vui lòng dán đường link trực tuyến');
 
       checkBtn.disabled = true;
       checkBtn.textContent = 'Đang kiểm tra...';
       previewArea.style.display = 'block';
-      previewArea.innerHTML = `<div class="empty-state">Đang lấy thông tin từ YouTube qua yt-dlp...</div>`;
+      previewArea.innerHTML = `<div class="empty-state">Đang lấy thông tin trực tuyến...</div>`;
       optionsArea.style.display = 'none';
 
       try {
-        const info = await api.youtube.info(url);
-        this.ytPrefetchedInfo = info;
+        const info = await api.online.info(url);
+        this.onlinePrefetchedInfo = info;
         checkBtn.disabled = false;
         checkBtn.textContent = 'Kiểm tra';
 
-        if (info.isPlaylist) {
+        if (info.isPlaylist || info.kind === 'playlist') {
           playlistExtra.style.display = 'block';
-          plNameInput.value = info.title || 'YouTube Playlist';
+          plNameInput.value = info.title || 'Danh sách phát';
 
           previewArea.innerHTML = `
             <div style="background:var(--bg-surface);padding:14px;border-radius:var(--radius-md);border:1px solid var(--border-subtle);">
               <h4 style="font-weight:700;margin-bottom:4px;">${info.title}</h4>
-              <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px;">Playlist gồm ${info.count} bài • Kênh: ${info.channel}</p>
+              <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px;">Playlist gồm ${(info.items || []).length} bài</p>
               <div style="max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;">
                 ${(info.items || []).map((it, idx) => `
                   <div style="font-size:0.8rem;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
@@ -270,12 +250,13 @@ export class AddMediaModal {
           `;
         } else {
           playlistExtra.style.display = 'none';
+          const target = info.track || info;
           previewArea.innerHTML = `
             <div style="display:flex;gap:12px;background:var(--bg-surface);padding:12px;border-radius:var(--radius-md);border:1px solid var(--border-subtle);">
-              <img src="${info.thumbnail}" alt="" style="width:90px;height:60px;object-fit:cover;border-radius:var(--radius-sm);flex-shrink:0;">
-              <div style="min-width:0;">
-                <h4 style="font-size:0.95rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${info.title}</h4>
-                <p style="font-size:0.8rem;color:var(--text-muted);">${info.channel} • ${Math.round(info.duration / 60)} phút</p>
+              <img src="${target.thumbnail || target.thumbnail_url || ''}" alt="" style="width:72px;height:72px;object-fit:cover;border-radius:var(--radius-sm);flex-shrink:0;">
+              <div style="min-width:0;display:flex;flex-direction:column;justify-content:center;">
+                <h4 style="font-size:0.95rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${target.title}</h4>
+                <p style="font-size:0.8rem;color:var(--text-muted);margin:4px 0 0;">${target.artist || target.channel || 'Nghệ sĩ'}</p>
               </div>
             </div>
           `;
@@ -289,32 +270,42 @@ export class AddMediaModal {
       }
     });
 
-    downloadBtn.addEventListener('click', async () => {
-      if (!this.ytPrefetchedInfo) return;
+    downloadBtn?.addEventListener('click', async () => {
+      if (!this.onlinePrefetchedInfo) return;
 
-      animateFlyToCorner(downloadBtn, this.ytPrefetchedInfo);
+      animateFlyToCorner(downloadBtn, this.onlinePrefetchedInfo);
 
       const mediaType = 'audio';
-      const quality = '720p';
+      const quality = 'HQ';
       const url = urlInput.value.trim();
 
       downloadBtn.disabled = true;
       downloadBtn.textContent = 'Đang xếp hàng...';
 
       try {
-        if (this.ytPrefetchedInfo.isPlaylist) {
-          const createPlaylist = document.getElementById('yt-create-playlist-cb').checked;
+        const info = this.onlinePrefetchedInfo;
+        if (info.isPlaylist || info.kind === 'playlist') {
+          const createPlaylist = document.getElementById('online-create-playlist-cb').checked;
           const playlistName = plNameInput.value.trim();
-          await api.youtube.download({
+          await api.online.download({
             url,
             mediaType,
             quality,
-            items: this.ytPrefetchedInfo.items,
+            items: info.items,
             createPlaylist,
             playlistName
           });
         } else {
-          await api.youtube.download({ url, mediaType, quality });
+          const target = info.track || info;
+          await api.online.download({
+            url,
+            mediaType,
+            quality,
+            id: target.id,
+            title: target.title,
+            artist: target.artist || target.channel,
+            thumbnail: target.thumbnail || target.thumbnail_url
+          });
         }
 
         document.getElementById('add-media-overlay').remove();
@@ -322,7 +313,7 @@ export class AddMediaModal {
         if (this.onSuccess) this.onSuccess();
       } catch (err) {
         downloadBtn.disabled = false;
-        downloadBtn.textContent = 'Bắt đầu tải';
+        downloadBtn.textContent = 'Tải audio (HQ)';
         alert('Lỗi tạo tác vụ: ' + err.message);
       }
     });

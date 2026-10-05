@@ -114,19 +114,6 @@ export class SettingsView {
 
           <button id="btn-save-settings" class="btn-primary" style="align-self:flex-end;">Lưu cài đặt</button>
         </div>
-
-
-        <!-- YouTube Downloader Binary Tools -->
-        <div style="background:var(--bg-surface);padding:16px;border-radius:var(--radius-lg);border:1px solid var(--border-subtle);">
-          <h3 style="font-size:1rem;font-weight:600;margin-bottom:8px;">Bộ công cụ tải trực tuyến</h3>
-          <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px;">
-            Khi dịch vụ trực tuyến nâng cấp làm quá trình tải bị lỗi, bạn có thể cập nhật bộ công cụ tải bằng nút bên dưới.
-          </p>
-          <div style="display:flex;align-items:center;gap:12px;">
-            <button id="btn-update-ytdlp" class="btn-secondary">Cập nhật yt-dlp</button>
-            <span id="ytdlp-status-text" style="font-size:0.85rem;color:var(--text-muted);"></span>
-          </div>
-        </div>
       </div>
     `;
 
@@ -206,7 +193,7 @@ export class SettingsView {
           <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
             <div style="min-width:0;flex:1;padding-right:8px;">
               <div style="font-size:0.88rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                ${job.kind === 'youtube' ? 'Trực tuyến' : 'Chuyển đổi'} - ${this.escapeHtml(job.url || job.track_id || 'Media')}
+                ${(job.kind === 'soundcloud' || job.kind === 'online') ? 'Trực tuyến' : 'Chuyển đổi'} - ${this.escapeHtml(job.url || job.track_id || 'Media')}
               </div>
               <div style="font-size:0.78rem;color:var(--text-muted);display:flex;gap:6px;align-items:center;margin-top:3px;flex-wrap:wrap;">
                 <span>${job.media_type === 'video' ? 'Video (' + (job.quality || '720p') + ')' : 'Audio (m4a)'}</span>
@@ -339,21 +326,6 @@ export class SettingsView {
         saveBtn.disabled = false;
         saveBtn.textContent = 'Lưu cài đặt';
         alert('Lỗi: ' + err.message);
-      }
-    });
-
-    const updateYtBtn = document.getElementById('btn-update-ytdlp');
-    const ytStatus = document.getElementById('ytdlp-status-text');
-    updateYtBtn.addEventListener('click', async () => {
-      try {
-        updateYtBtn.disabled = true;
-        ytStatus.textContent = 'Đang cập nhật...';
-        const res = await api.system.updateYtDlp();
-        ytStatus.textContent = res.message || 'Đã hoàn tất';
-      } catch (err) {
-        ytStatus.textContent = 'Lỗi: ' + err.message;
-      } finally {
-        updateYtBtn.disabled = false;
       }
     });
   }

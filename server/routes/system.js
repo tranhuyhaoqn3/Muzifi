@@ -3,7 +3,6 @@ import bcrypt from 'bcryptjs';
 import { requireAuth } from '../middleware/auth.js';
 import { getAllSettings, setSetting, getSetting, getAllUserSettings, setUserSetting } from '../db.js';
 import { getStorageStats, cleanTmpDir } from '../services/storage.js';
-import { updateYtDlp } from '../services/ytdlp.js';
 
 const router = express.Router();
 
@@ -21,15 +20,6 @@ router.get('/storage', requireAuth, (req, res) => {
 router.post('/clean-tmp', requireAuth, (req, res) => {
   cleanTmpDir();
   res.json({ success: true });
-});
-
-router.post('/update-ytdlp', requireAuth, async (req, res) => {
-  try {
-    const result = await updateYtDlp();
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
 });
 
 // Load settings for current user (works on all devices)

@@ -3,7 +3,6 @@ import path from 'path';
 import fs from 'fs';
 import { db, getSetting } from '../db.js';
 import { config } from '../config.js';
-import { downloadYouTube } from './ytdlp.js';
 import { getSoundCloudStreamUrl, downloadSoundCloudTrackDirect, normalizeSoundCloudId } from './soundcloud.js';
 import { probeMedia, convertAudioToM4A, convertVideoToMP4, generateVideoThumbnail } from './ffmpeg.js';
 import { extractMetadata } from './metadata.js';
@@ -185,17 +184,8 @@ class JobQueue {
     abortControllers.set(nextJob.id, abortController);
 
     try {
-      if (nextJob.kind === 'soundcloud') {
+      if (nextJob.kind === 'soundcloud' || nextJob.kind === 'online') {
         await this.runSoundCloudJob(nextJob, abortController.signal);
-      } else if (nextJob.kind === 'youtube') {
-        const isSc = (nextJob.url && nextJob.url.includes('soundcloud.com')) ||
-                     /^\d+$/.test(nextJob.url) ||
-                     (nextJob.extra && (nextJob.extra.includes('soundcloud') || /"id":"\d+"/.test(nextJob.extra)));
-        if (isSc) {
-          await this.runSoundCloudJob(nextJob, abortController.signal);
-        } else {
-          await this.runYouTubeJob(nextJob, abortController.signal);
-        }
       } else if (nextJob.kind === 'convert') {
         await this.runConvertJob(nextJob, abortController.signal);
       }
@@ -214,10 +204,10 @@ class JobQueue {
       extra = typeof job.extra === 'string' ? JSON.parse(job.extra || '{}') : (job.extra || {});
     } catch { }
 
-    const rawTarget = extra.soundcloudId || extra.youtubeId || job.url;
+    const rawTarget = extra.onlineId || extra.soundcloudId || job.url;
     const resolved = await getSoundCloudStreamUrl(rawTarget);
     if (!resolved?.streamUrl) {
-      throw new Error('Could not resolve SoundCloud stream URL');
+      throw new Error('Could not resolve stream URL');
     }
 
     const trackId = crypto.randomUUID();
@@ -267,25 +257,21 @@ class JobQueue {
       }
     }
 
-    const finalTitle = (extra.title && extra.title !== 'SoundCloud Track' && extra.title !== 'YouTube Audio/Video')
-      ? extra.title
-      : (resolved.track?.title || meta.title || 'SoundCloud Track');
-    const finalArtist = (extra.artist && extra.artist !== 'SoundCloud' && extra.artist !== 'YouTube')
-      ? extra.artist
-      : (resolved.track?.artist || meta.artist || 'Nghệ sĩ');
+    const finalTitle = extra.title || resolved.track?.title || meta.title || 'Bài hát';
+    const finalArtist = extra.artist || resolved.track?.artist || meta.artist || 'Nghệ sĩ';
 
     // Insert into tracks table
     db.prepare(`
       INSERT INTO tracks (
         id, user_id, title, artist, album, duration_sec, media_type, mime, file_path, file_size, 
         thumbnail_path, width, height, source, source_url, original_ext, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'soundcloud', ?, ?, datetime('now'))
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'online', ?, ?, datetime('now'))
     `).run(
       trackId,
       job.user_id || 'default',
       finalTitle,
       finalArtist,
-      resolved.track?.genre || meta.album || 'SoundCloud',
+      resolved.track?.genre || meta.album || 'Nhạc Trực Tuyến',
       probe.durationSec || resolved.track?.duration_sec || meta.durationSec || 0,
       'audio',
       'audio/mpeg',
@@ -319,166 +305,6 @@ class JobQueue {
         title: finalTitle,
         artist: finalArtist,
         duration: probe.durationSec || resolved.track?.duration_sec || 0
-      });
-      if (lyricsResult && (lyricsResult.syncedLyrics || lyricsResult.plainLyrics)) {
-        const lrcFile = path.join(config.MEDIA_DIR, `${trackId}.lrc`);
-        fs.writeFileSync(lrcFile, lyricsResult.syncedLyrics || lyricsResult.plainLyrics, 'utf8');
-      }
-    } catch (lErr) {
-      console.warn(`[Queue] Auto-lyrics notice for ${trackId}:`, lErr.message);
-    }
-
-    this.markDone(job.id, trackId);
-  }
-
-  async runYouTubeJob(job, abortSignal) {
-    this.updateProgress(job.id, { progress: 0, status: 'downloading' });
-
-    const trackId = crypto.randomUUID();
-    const isAudio = job.media_type === 'audio';
-    const ext = isAudio ? '.m4a' : '.mp4';
-    const filename = `${trackId}${ext}`;
-    const targetFilePath = path.join(config.MEDIA_DIR, filename);
-
-    // yt-dlp download template
-    const templatePath = path.join(config.MEDIA_DIR, `${trackId}.%(ext)s`);
-
-    await downloadYouTube({
-      url: job.url,
-      mediaType: job.media_type,
-      quality: job.quality || '720p',
-      outputPath: templatePath,
-      onProgress: p => {
-        this.updateProgress(job.id, {
-          progress: p.progress || 0,
-          speed: p.speed || '',
-          eta: p.eta || '',
-          status: 'downloading'
-        });
-      },
-      abortSignal
-    });
-
-    this.markProcessing(job.id);
-
-    // Find actual generated file (yt-dlp may output .m4a or .mp4)
-    let actualFile = targetFilePath;
-    if (!fs.existsSync(actualFile)) {
-      const candidates = fs.readdirSync(config.MEDIA_DIR).filter(f => f.startsWith(trackId));
-      if (candidates.length > 0) {
-        actualFile = path.join(config.MEDIA_DIR, candidates[0]);
-      } else {
-        throw new Error('Downloaded file not found on disk');
-      }
-    }
-
-    const probe = await probeMedia(actualFile);
-    const meta = await extractMetadata(actualFile);
-
-    const stats = fs.statSync(actualFile);
-    const mime = isAudio ? 'audio/mp4' : 'video/mp4';
-    let thumbFilename = meta.thumbnailFile;
-
-    // Parse extra metadata if provided
-    let extra = {};
-    try {
-      extra = typeof job.extra === 'string' ? JSON.parse(job.extra || '{}') : (job.extra || {});
-    } catch { }
-
-    const ytidMatch = (job.url || '').match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
-    const youtubeId = ytidMatch ? ytidMatch[1] : (extra.youtubeId || extra.youtube_id || '');
-
-    // Download thumbnail for audio/video if not embedded
-    if (!thumbFilename) {
-      const candidateUrls = [];
-      if (extra.thumbnail) candidateUrls.push(extra.thumbnail);
-      if (extra.thumbnail_url) candidateUrls.push(extra.thumbnail_url);
-      if (youtubeId) {
-        candidateUrls.push(`https://i.ytimg.com/vi/${youtubeId}/maxresdefault.jpg`);
-        candidateUrls.push(`https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`);
-        candidateUrls.push(`https://i.ytimg.com/vi/${youtubeId}/mqdefault.jpg`);
-      }
-
-      for (const tUrl of candidateUrls) {
-        try {
-          const tRes = await fetch(tUrl, { signal: AbortSignal.timeout(5000) });
-          if (tRes.ok) {
-            const buf = Buffer.from(await tRes.arrayBuffer());
-            if (buf && buf.length > 500) {
-              const tName = `thumb_${trackId}.jpg`;
-              const tPath = path.join(config.THUMBS_DIR, tName);
-              fs.writeFileSync(tPath, buf);
-              thumbFilename = tName;
-              break;
-            }
-          }
-        } catch {
-          // try next URL
-        }
-      }
-    }
-
-    // If video and still no thumbnail, generate one with ffmpeg
-    if (!isAudio && !thumbFilename) {
-      const vThumbName = `thumb_${trackId}.jpg`;
-      const vThumbPath = path.join(config.THUMBS_DIR, vThumbName);
-      try {
-        await generateVideoThumbnail(actualFile, vThumbPath, probe.durationSec || 10);
-        thumbFilename = vThumbName;
-      } catch (thumbErr) {
-        console.warn(`Video thumbnail generation notice: ${thumbErr.message}`);
-      }
-    }
-
-    const finalTitle = (extra.title && extra.title !== 'YouTube Audio/Video') ? extra.title : (meta.title || 'YouTube Audio');
-    const finalArtist = (extra.artist && extra.artist !== 'YouTube') ? extra.artist : (meta.artist || 'YouTube');
-
-    // Insert into tracks table
-    db.prepare(`
-      INSERT INTO tracks (
-        id, user_id, title, artist, album, duration_sec, media_type, mime, file_path, file_size, 
-        thumbnail_path, width, height, source, source_url, original_ext, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'youtube', ?, ?, datetime('now'))
-    `).run(
-      trackId,
-      job.user_id || 'default',
-      finalTitle,
-      finalArtist,
-      meta.album || '',
-      probe.durationSec || meta.durationSec || 0,
-      job.media_type,
-      mime,
-      path.basename(actualFile),
-      stats.size,
-      thumbFilename,
-      probe.width || null,
-      probe.height || null,
-      job.url,
-      path.extname(actualFile)
-    );
-
-    if (extra && extra.playlistId) {
-      try {
-        const maxPosRow = db.prepare('SELECT MAX(position) as maxPos FROM playlist_tracks WHERE playlist_id = ?').get(extra.playlistId);
-        const nextPos = (maxPosRow && maxPosRow.maxPos != null) ? maxPosRow.maxPos + 1 : 0;
-        db.prepare(`
-          INSERT OR IGNORE INTO playlist_tracks (playlist_id, track_id, position)
-          VALUES (?, ?, ?)
-        `).run(extra.playlistId, trackId, nextPos);
-        db.prepare("UPDATE playlists SET updated_at = datetime('now') WHERE id = ?").run(extra.playlistId);
-      } catch (plErr) {
-        console.warn('[Queue] Failed to add track to playlist:', plErr.message);
-      }
-    }
-
-    // Automatically fetch and persist lyrics for offline use
-    try {
-      const lyricsResult = await getLyrics({
-        trackId: trackId,
-        youtubeId: youtubeId,
-        title: finalTitle,
-        artist: finalArtist,
-        duration: probe.durationSec || meta.durationSec || 0
       });
       if (lyricsResult && (lyricsResult.syncedLyrics || lyricsResult.plainLyrics)) {
         const lrcFile = path.join(config.MEDIA_DIR, `${trackId}.lrc`);

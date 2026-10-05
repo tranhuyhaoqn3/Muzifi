@@ -55,7 +55,6 @@
 ### Yêu cầu hệ thống:
 - [Node.js](https://nodejs.org/) (phiên bản 18+ trở lên)
 - [FFmpeg](https://ffmpeg.org/) (đã cấu hình biến môi trường PATH)
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp) (nếu dùng tính năng stream trực tuyến)
 
 ### Các bước cài đặt:
 
@@ -95,8 +94,8 @@
 
 ```text
 ├── server/                 # Mã nguồn backend (Express, SQLite, Services)
-│   ├── routes/             # API routes (tracks, playlists, youtube, auth...)
-│   ├── services/           # Services (ffmpeg, yt-dlp, storage, queue...)
+│   ├── routes/             # API routes (tracks, playlists, online, auth...)
+│   ├── services/           # Services (ffmpeg, storage, queue, soundcloud...)
 │   ├── db.js               # Khởi tạo SQLite database
 │   └── index.js            # Entry point của server
 ├── web/                    # Mã nguồn frontend client

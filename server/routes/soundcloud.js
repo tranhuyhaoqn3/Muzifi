@@ -102,7 +102,7 @@ router.get('/stream', requireAuth, async (req, res) => {
   const rawId = req.query.v || req.query.id;
   const v = normalizeSoundCloudId(rawId);
   if (!v) {
-    return res.status(400).send('SoundCloud Track ID required');
+    return res.status(400).send('Track ID required');
   }
 
   // 1. FAST PATH: Local disk cache hit
@@ -172,7 +172,7 @@ router.get('/stream', requireAuth, async (req, res) => {
       if (err.code === 'ECONNRESET' || proxyReq.destroyed || req.destroyed) return;
       console.error('[SoundCloud Stream Proxy Error]:', err);
       if (!res.headersSent) {
-        res.status(502).send('Error streaming from SoundCloud CDN');
+        res.status(502).send('Error streaming online audio');
       }
     });
 
@@ -205,7 +205,7 @@ router.get('/preload', requireAuth, async (req, res) => {
 router.post('/info', requireAuth, async (req, res) => {
   const { url } = req.body || {};
   if (!url) {
-    return res.status(400).json({ error: 'SoundCloud URL is required' });
+    return res.status(400).json({ error: 'URL is required' });
   }
 
   try {
@@ -227,7 +227,7 @@ router.post('/download', requireAuth, async (req, res) => {
     let playlistId = null;
     if (createPlaylist) {
       playlistId = crypto.randomUUID();
-      const pName = playlistName || 'SoundCloud Playlist';
+      const pName = playlistName || 'Danh sách phát trực tuyến';
       const now = new Date().toISOString();
       db.prepare(`
         INSERT INTO playlists (id, user_id, name, created_at, updated_at)

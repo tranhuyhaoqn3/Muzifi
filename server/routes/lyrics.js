@@ -9,12 +9,11 @@ const router = express.Router();
  * Query params: trackId, title, artist, duration
  */
 router.get('/', requireAuth, async (req, res) => {
-  const { trackId, youtubeId, title, artist, duration } = req.query;
+  const { trackId, title, artist, duration } = req.query;
 
   try {
     const result = await getLyrics({
       trackId: trackId || '',
-      youtubeId: youtubeId || '',
       title: title || '',
       artist: artist || '',
       duration: parseFloat(duration) || 0

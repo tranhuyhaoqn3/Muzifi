@@ -160,7 +160,7 @@ export class JobsModal {
         else if (typeof job.extra === 'object' && job.extra) extra = job.extra;
       } catch (e) {}
 
-      const rawTitle = extra?.title || job.title || (job.kind === 'youtube' ? 'Trực tuyến' : 'Chuyển đổi') + ' - ' + (job.url || job.track_id || 'Media');
+      const rawTitle = extra?.title || job.title || ((job.kind === 'soundcloud' || job.kind === 'online') ? 'Trực tuyến' : 'Chuyển đổi') + ' - ' + (job.url || job.track_id || 'Media');
       const shortTitle = this.shortenTitle(rawTitle, 30);
       const displayArtist = extra?.artist ? this.shortenTitle(extra.artist, 18) : '';
 

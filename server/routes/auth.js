@@ -14,8 +14,7 @@ import {
 import { 
   generateGoogleAuthUrl, 
   exchangeCodeForTokens, 
-  getGoogleCredentials,
-  fetchUserYouTubeData 
+  getGoogleCredentials 
 } from '../services/googleAuth.js';
 
 const router = express.Router();
@@ -115,21 +114,6 @@ router.get('/google/callback', async (req, res) => {
       maxAge: config.COOKIE_MAX_AGE_DAYS * 24 * 60 * 60 * 1000,
       path: '/'
     });
-
-    // In background, fetch initial YouTube data for this user
-    fetchUserYouTubeData({ id: effectiveUserId, access_token: tokens.access_token, refresh_token: refreshToken }, req)
-      .then(ytData => {
-        db.prepare(`
-          INSERT INTO user_youtube_data (user_id, subscriptions, liked_videos, playlists, updated_at)
-          VALUES (?, ?, ?, ?, datetime('now'))
-          ON CONFLICT(user_id) DO UPDATE SET
-            subscriptions = excluded.subscriptions,
-            liked_videos = excluded.liked_videos,
-            playlists = excluded.playlists,
-            updated_at = excluded.updated_at
-        `).run(effectiveUserId, JSON.stringify(ytData.subscriptions), JSON.stringify(ytData.liked), JSON.stringify(ytData.playlists));
-      })
-      .catch(e => console.warn('[GoogleCallback] Background sync error:', e.message));
 
     res.redirect(`/?auth_token=${encodeURIComponent(sessionToken)}`);
   } catch (err) {

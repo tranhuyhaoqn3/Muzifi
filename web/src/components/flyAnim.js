@@ -43,7 +43,7 @@ export function animateFlyToCorner(source, track = {}) {
     const flyer = document.createElement('div');
     flyer.className = 'fly-to-download-ghost';
 
-    const thumb = track.thumbnail_url || track.thumbnail || (track.youtubeId ? `https://i.ytimg.com/vi/${track.youtubeId}/default.jpg` : '');
+    const thumb = track.thumbnail_url || track.thumbnail || '';
 
     if (thumb) {
       flyer.innerHTML = `<img src="${thumb}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;pointer-events:none;">`;

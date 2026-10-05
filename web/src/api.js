@@ -102,47 +102,26 @@ export const api = {
     }
   },
   get: (url) => request(url),
-  soundcloud: {
-    info: (url) => request('/api/soundcloud/info', { method: 'POST', body: { url } }),
-    download: (payload) => request('/api/soundcloud/download', { method: 'POST', body: payload }),
+  online: {
+    info: (url) => request('/api/online/info', { method: 'POST', body: { url } }),
+    download: (payload) => request('/api/online/download', { method: 'POST', body: payload }),
     getFeed: (topic = '', params = {}) => {
       const sp = new URLSearchParams(params);
       if (topic) sp.set('topic', topic);
       const qs = sp.toString();
-      return request('/api/soundcloud/feed' + (qs ? '?' + qs : ''));
+      return request('/api/online/feed' + (qs ? '?' + qs : ''));
     },
     search: (q, params = {}) => {
       const sp = new URLSearchParams(params);
       sp.set('q', q);
-      return request('/api/soundcloud/search?' + sp.toString());
+      return request('/api/online/search?' + sp.toString());
     },
-    suggest: (q) => request('/api/soundcloud/suggest?q=' + encodeURIComponent(q)),
-    getRelated: (v) => request('/api/soundcloud/related?v=' + encodeURIComponent(v)),
-    preload: (params = {}) => request('/api/soundcloud/preload?' + new URLSearchParams(params).toString()),
-    getQualities: (v) => request('/api/soundcloud/qualities?v=' + encodeURIComponent(v)),
-    meData: () => request('/api/soundcloud/me-data'),
-    syncMeData: () => request('/api/soundcloud/me-data/sync', { method: 'POST' }),
-  },
-  youtube: {
-    info: (url) => request('/api/soundcloud/info', { method: 'POST', body: { url } }),
-    download: (payload) => request('/api/soundcloud/download', { method: 'POST', body: payload }),
-    getFeed: (topic = '', params = {}) => {
-      const sp = new URLSearchParams(params);
-      if (topic) sp.set('topic', topic);
-      const qs = sp.toString();
-      return request('/api/soundcloud/feed' + (qs ? '?' + qs : ''));
-    },
-    search: (q, params = {}) => {
-      const sp = new URLSearchParams(params);
-      sp.set('q', q);
-      return request('/api/soundcloud/search?' + sp.toString());
-    },
-    suggest: (q) => request('/api/soundcloud/suggest?q=' + encodeURIComponent(q)),
-    getRelated: (v) => request('/api/soundcloud/related?v=' + encodeURIComponent(v)),
-    preload: (params = {}) => request('/api/soundcloud/preload?' + new URLSearchParams(params).toString()),
-    getQualities: (v) => request('/api/soundcloud/qualities?v=' + encodeURIComponent(v)),
-    meData: () => request('/api/soundcloud/me-data'),
-    syncMeData: () => request('/api/soundcloud/me-data/sync', { method: 'POST' }),
+    suggest: (q) => request('/api/online/suggest?q=' + encodeURIComponent(q)),
+    getRelated: (v) => request('/api/online/related?v=' + encodeURIComponent(v)),
+    preload: (params = {}) => request('/api/online/preload?' + new URLSearchParams(params).toString()),
+    getQualities: (v) => request('/api/online/qualities?v=' + encodeURIComponent(v)),
+    meData: () => request('/api/online/me-data'),
+    syncMeData: () => request('/api/online/me-data/sync', { method: 'POST' }),
   },
   jobs: {
     list: () => request('/api/jobs'),
@@ -173,6 +152,5 @@ export const api = {
     storage: () => request('/api/system/storage'),
     settings: () => request('/api/settings'),
     updateSettings: (data) => request('/api/settings', { method: 'PUT', body: data }),
-    updateYtDlp: () => request('/api/system/update-ytdlp', { method: 'POST' }),
   }
 };

@@ -144,12 +144,12 @@ export function getHighResArtwork(track) {
  */
 export function formatSoundCloudTrack(track) {
   if (!track || !track.id) return null;
-  const channel = track.user?.username || track.user?.full_name || 'SoundCloud Artist';
+  const channel = track.user?.username || track.user?.full_name || 'Nghệ sĩ';
   const durationSec = Math.round((track.duration || 0) / 1000);
 
   return {
     id: String(track.id),
-    title: track.title || 'SoundCloud Track',
+    title: track.title || 'Bài hát',
     channel: channel,
     artist: channel,
     duration: durationSec,
@@ -262,14 +262,14 @@ export async function getSoundCloudRelated(rawId, limit = 20) {
         const data = await res.json();
         const items = (data.collection || []).map(formatSoundCloudTrack).filter(Boolean);
         if (items.length > 0) {
-          return { items, genre: 'SoundCloud Radio' };
+          return { items, genre: 'Radio Trực Tuyến' };
         }
       }
     }
 
     // Fallback: search for related music
     const searchRes = await searchSoundCloud('nhac tre remix hot', limit, 1);
-    return { items: searchRes.items, genre: 'SoundCloud Radio' };
+    return { items: searchRes.items, genre: 'Radio Trực Tuyến' };
   } catch (err) {
     console.warn(`[SoundCloud] Failed to get related for ${trackId}:`, err.message);
     return { items: [] };
@@ -281,28 +281,28 @@ export async function getSoundCloudRelated(rawId, limit = 20) {
  */
 export async function getSoundCloudStreamUrl(rawId) {
   const trackId = normalizeSoundCloudId(rawId);
-  if (!trackId) throw new Error('SoundCloud Track ID required');
+  if (!trackId) throw new Error('Track ID required');
 
   let trackData = null;
 
   if (/^\d+$/.test(trackId)) {
     const res = await scFetch(`https://api-v2.soundcloud.com/tracks/${trackId}`);
     if (!res.ok) {
-      throw new Error(`SoundCloud track not found (HTTP ${res.status})`);
+      throw new Error(`Track not found (HTTP ${res.status})`);
     }
     trackData = await res.json();
   } else {
     // Attempt to resolve URL
     const res = await scFetch(`https://api-v2.soundcloud.com/resolve?url=${encodeURIComponent(rawId)}`);
     if (!res.ok) {
-      throw new Error(`Could not resolve SoundCloud URL`);
+      throw new Error(`Could not resolve stream URL`);
     }
     trackData = await res.json();
   }
 
   const transcodings = trackData.media?.transcodings || [];
   if (transcodings.length === 0) {
-    throw new Error('No audio transcodings found for this SoundCloud track');
+    throw new Error('No audio transcodings found for this track');
   }
 
   // Find progressive MP3 stream (ideal for seeking, downloading & caching)
@@ -312,12 +312,12 @@ export async function getSoundCloudStreamUrl(rawId) {
 
   const streamInfoRes = await scFetch(progressive.url);
   if (!streamInfoRes.ok) {
-    throw new Error(`Failed to resolve SoundCloud stream transcoding: ${streamInfoRes.status}`);
+    throw new Error(`Failed to resolve stream transcoding: ${streamInfoRes.status}`);
   }
 
   const streamInfo = await streamInfoRes.json();
   if (!streamInfo?.url) {
-    throw new Error('SoundCloud stream URL could not be resolved');
+    throw new Error('Stream URL could not be resolved');
   }
 
   return {
@@ -334,7 +334,7 @@ export async function getSoundCloudStreamUrl(rawId) {
 export async function resolveSoundCloud(url) {
   const res = await scFetch(`https://api-v2.soundcloud.com/resolve?url=${encodeURIComponent(url)}`);
   if (!res.ok) {
-    throw new Error(`Could not resolve SoundCloud URL (HTTP ${res.status})`);
+    throw new Error(`Could not resolve URL (HTTP ${res.status})`);
   }
   const data = await res.json();
   if (data.kind === 'track') {

@@ -1,19 +1,16 @@
 import { store } from '../state.js';
 import { api } from '../api.js';
 import { icons } from './icons.js';
-import { UserModal } from './UserModal.js';
 import { animateFlyToCorner } from './flyAnim.js';
 
 export class OnlineView {
   constructor(playerEngine) {
     this.player = playerEngine;
     this.container = document.getElementById('main-view');
-    this.activeChip = 'all'; // 'all' | 'subscriptions' | 'liked' | 'playlists'
     this.feedItems = null;
     this.searchItems = null;
     this.currentQuery = '';
     this.currentUser = null;
-    this.meData = null;
     this.page = 1;
     this.isLoadingMore = false;
     this.hasMore = true;
@@ -30,15 +27,13 @@ export class OnlineView {
       this.currentUser = null;
     }
 
-    const isGoogle = Boolean(this.currentUser?.isGoogle);
-
     this.container.innerHTML = `
       <div class="online-view">
-        <!-- Search Bar (SoundCloud Search with Suggestions) -->
-        <div class="search-bar-row ytm-search-row" style="margin-bottom:14px;position:relative;">
+        <!-- Search Bar with Suggestions -->
+        <div class="search-bar-row ytm-search-row" style="margin-bottom:18px;position:relative;">
           <div class="search-input-box" style="position:relative;">
             ${icons.search}
-            <input type="text" id="online-search-input" autocomplete="off" spellcheck="false" placeholder="Tìm kiếm bài hát, nghệ sĩ, remix trên SoundCloud..." value="${this.escapeHtml(this.currentQuery || '')}">
+            <input type="text" id="online-search-input" autocomplete="off" spellcheck="false" placeholder="Tìm kiếm bài hát, nghệ sĩ, remix..." value="${this.escapeHtml(this.currentQuery || '')}">
             <button id="online-search-clear" class="icon-btn" style="min-height:32px;min-width:32px;${this.currentQuery ? 'display:inline-flex;' : 'display:none;'}">${icons.x}</button>
           </div>
           <button id="btn-online-search-submit" class="btn-primary" style="min-height:44px;padding:0 18px;font-weight:600;">
@@ -48,26 +43,11 @@ export class OnlineView {
           <div id="search-suggestions-dropdown" class="search-suggestions-dropdown" style="display:none;"></div>
         </div>
 
-        <!-- SoundCloud Music Genre & Trend Chips -->
-        <div class="yt-chip-bar" id="online-topic-chips" style="margin-bottom:16px;">
-          <button class="yt-chip active" data-topic="">Tất cả</button>
-          <button class="yt-chip" data-topic="vpop">V-Pop Hot</button>
-          <button class="yt-chip" data-topic="sontung">Sơn Tùng M-TP</button>
-          <button class="yt-chip" data-topic="denvau">Đen Vâu</button>
-          <button class="yt-chip" data-topic="vu">Vũ.</button>
-          <button class="yt-chip" data-topic="rapviet">Rap Việt</button>
-          <button class="yt-chip" data-topic="remix">Remix TikTok</button>
-          <button class="yt-chip" data-topic="lofi">Lofi Chill</button>
-          <button class="yt-chip" data-topic="acoustic">Acoustic</button>
-          <button class="yt-chip" data-topic="usuk">US-UK</button>
-          <button class="yt-chip" data-topic="edm">EDM</button>
-        </div>
-
         <!-- Dynamic Feed & Content Area -->
         <div id="online-content-area">
           <div id="online-feed-list" class="yt-video-grid">
             <div class="empty-state" style="grid-column: 1 / -1;">
-              <p class="empty-title">Đang tải nhạc trực tuyến từ SoundCloud...</p>
+              <p class="empty-title">Đang tải nhạc trực tuyến...</p>
             </div>
           </div>
         </div>
@@ -80,7 +60,7 @@ export class OnlineView {
     if (items && items.length > 0) {
       this.renderVideoCards(items, Boolean(this.currentQuery));
     } else {
-      await this.fetchFeed(this.activeTopic || '');
+      await this.fetchFeed();
     }
   }
 
@@ -160,7 +140,7 @@ export class OnlineView {
         return;
       }
       try {
-        const res = await api.youtube.suggest(q.trim());
+        const res = await api.online.suggest(q.trim());
         if (searchInput && searchInput.value.trim() === q.trim()) {
           renderSuggestions(res.suggestions || []);
         }
@@ -242,20 +222,6 @@ export class OnlineView {
       }
     });
 
-    const chipBar = document.getElementById('online-topic-chips');
-    chipBar?.querySelectorAll('.yt-chip').forEach(btn => {
-      btn.addEventListener('click', () => {
-        chipBar.querySelectorAll('.yt-chip').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        this.activeTopic = btn.dataset.topic || '';
-        if (searchInput) searchInput.value = '';
-        this.currentQuery = '';
-        if (clearBtn) clearBtn.style.display = 'none';
-        hideDropdown();
-        this.fetchFeed(this.activeTopic);
-      });
-    });
-
     clearBtn?.addEventListener('click', () => {
       if (searchInput) searchInput.value = '';
       this.currentQuery = '';
@@ -265,7 +231,7 @@ export class OnlineView {
       if (this.feedItems && this.feedItems.length > 0) {
         this.renderVideoCards(this.feedItems, false);
       } else {
-        this.fetchFeed(this.activeTopic || '');
+        this.fetchFeed();
       }
     });
 
@@ -296,8 +262,7 @@ export class OnlineView {
       msg.includes('500') ||
       msg.includes('getaddrinfo') ||
       msg.includes('enotfound') ||
-      msg.includes('urlopen') ||
-      msg.includes('youtube')
+      msg.includes('urlopen')
     );
   }
 
@@ -343,293 +308,6 @@ export class OnlineView {
     });
   }
 
-  async switchChip(chip) {
-    this.activeChip = chip;
-    this.container.querySelectorAll('.yt-chip[data-chip]').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.chip === chip);
-    });
-    await this.loadActiveChipContent();
-  }
-
-  async loadActiveChipContent(forceRefresh = false) {
-    const contentArea = document.getElementById('online-content-area');
-    if (!contentArea) return;
-
-    if (this.activeChip === 'all') {
-      contentArea.innerHTML = `
-        <div id="online-feed-list" class="yt-video-grid">
-          <div class="empty-state" style="grid-column: 1 / -1;">
-            <p class="empty-title">Đang tải dữ liệu trực tuyến...</p>
-          </div>
-        </div>
-      `;
-      const itemsToRender = this.currentQuery ? this.searchItems : this.feedItems;
-      if (itemsToRender && itemsToRender.length > 0 && !forceRefresh) {
-        this.renderVideoCards(itemsToRender, Boolean(this.currentQuery));
-      } else {
-        if (this.currentQuery) {
-          await this.search(this.currentQuery);
-        } else {
-          await this.fetchFeed();
-        }
-      }
-      return;
-    }
-
-    const isGoogle = Boolean(this.currentUser?.isGoogle);
-
-    // If user is not logged in to Google, show prompt
-    if (!isGoogle) {
-      this.renderGooglePrompt(contentArea, this.activeChip);
-      return;
-    }
-
-    contentArea.innerHTML = `
-      <div class="empty-state">
-        <p class="empty-title">Đang tải dữ liệu trực tuyến...</p>
-      </div>
-    `;
-
-    try {
-      if (!this.meData || forceRefresh) {
-        this.meData = await api.youtube.meData();
-      }
-
-      if (this.activeChip === 'subscriptions') {
-        this.renderSubscriptions(this.meData?.subscriptions || []);
-      } else if (this.activeChip === 'liked') {
-        this.renderLikedVideos(this.meData?.liked || []);
-      } else if (this.activeChip === 'playlists') {
-        this.renderPlaylists(this.meData?.playlists || []);
-      }
-    } catch (err) {
-      contentArea.innerHTML = `
-        <div class="empty-state">
-          <p class="empty-title" style="color:#ef4444;">Không thể tải dữ liệu</p>
-          <p style="font-size:0.85rem;color:var(--text-muted);">${this.escapeHtml(err.message)}</p>
-        </div>
-      `;
-    }
-  }
-
-  renderGooglePrompt(container, chip) {
-    let title = 'Đăng nhập Google để xem kênh đã đăng ký';
-    let desc = 'Đăng nhập bằng tài khoản Google để theo dõi các video mới nhất từ các kênh bạn yêu thích.';
-
-    if (chip === 'liked') {
-      title = 'Đăng nhập Google để xem Video đã thích';
-      desc = 'Toàn bộ danh sách các bài hát và video bạn đã bấm thích sẽ hiển thị tại đây.';
-    } else if (chip === 'playlists') {
-      title = 'Đăng nhập Google để xem Danh sách phát';
-      desc = 'Nghe và phát lại tất cả danh sách phát bạn đã tạo.';
-    }
-
-    container.innerHTML = `
-      <div class="empty-state" style="padding:60px 20px;max-width:440px;margin:0 auto;text-align:center;">
-        <div style="width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
-          <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor" style="color:var(--text-muted);">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 4c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm0 14c-2.03 0-4.43-.82-6.14-2.88C7.55 15.8 9.68 15 12 15s4.45.8 6.14 2.12C16.43 19.18 14.03 20 12 20z"/>
-          </svg>
-        </div>
-        <h3 style="font-size:1.1rem;font-weight:600;margin:0 0 8px;">${title}</h3>
-        <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 20px;line-height:1.4;">${desc}</p>
-        <button id="btn-prompt-google-login" class="pill-btn" style="background:#ffffff;color:#1f2937;font-weight:600;font-size:0.88rem;padding:8px 20px;border:none;margin:0 auto;display:inline-flex;align-items:center;gap:8px;">
-          <svg width="16" height="16" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
-          Đăng nhập bằng Google
-        </button>
-      </div>
-    `;
-
-    container.querySelector('#btn-prompt-google-login')?.addEventListener('click', () => {
-      new UserModal(this.currentUser, (newUser) => {
-        if (window.app?.onUserChanged) window.app.onUserChanged(newUser);
-        this.currentUser = newUser;
-        this.render();
-      }).show();
-    });
-  }
-
-  renderSubscriptions(subs) {
-    const contentArea = document.getElementById('online-content-area');
-    if (!contentArea) return;
-
-    if (subs.length === 0) {
-      contentArea.innerHTML = `
-        <div class="empty-state" style="padding:40px 20px;">
-          <p class="empty-title">Không tìm thấy kênh đăng ký nào</p>
-          <p style="color:var(--text-muted);font-size:0.85rem;margin:8px auto 16px;">
-            Tài khoản Google chưa có kênh đăng ký hoặc hãy bấm nút Đồng bộ.
-          </p>
-        </div>
-      `;
-      return;
-    }
-
-    contentArea.innerHTML = `
-      <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(240px, 1fr));gap:14px;">
-        ${subs.map(sub => `
-          <div class="subscription-card" style="background:var(--bg-surface);padding:14px;border-radius:var(--radius-lg);border:1px solid var(--border-subtle);display:flex;align-items:center;gap:12px;">
-            <img src="${sub.thumbnail || ''}" alt="" style="width:48px;height:48px;border-radius:50%;object-fit:cover;flex-shrink:0;background:var(--bg-elevated);">
-            <div style="min-width:0;flex:1;">
-              <h4 style="font-size:0.88rem;font-weight:600;margin:0 0 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${this.escapeHtml(sub.title)}">
-                ${this.escapeHtml(sub.title)}
-              </h4>
-              <p style="font-size:0.75rem;color:var(--text-muted);margin:0 0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                ${this.escapeHtml(sub.description || 'Kênh nghệ sĩ')}
-              </p>
-              <button class="pill-btn btn-search-channel" data-name="${this.escapeHtml(sub.title)}" style="font-size:0.72rem;padding:3px 10px;min-height:26px;">
-                Xem video
-              </button>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-    `;
-
-    contentArea.querySelectorAll('.btn-search-channel').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const name = btn.dataset.name;
-        const searchInput = document.getElementById('online-search-input');
-        if (searchInput) searchInput.value = name;
-        this.switchChip('all');
-        this.search(name);
-      });
-    });
-  }
-
-  renderLikedVideos(liked) {
-    const contentArea = document.getElementById('online-content-area');
-    if (!contentArea) return;
-
-    if (liked.length === 0) {
-      contentArea.innerHTML = `
-        <div class="empty-state" style="padding:40px 20px;">
-          <p class="empty-title">Chưa có video đã thích nào</p>
-          <p style="color:var(--text-muted);font-size:0.85rem;margin:8px auto 16px;">
-            Hãy thích video trực tuyến hoặc bấm nút Đồng bộ lại.
-          </p>
-        </div>
-      `;
-      return;
-    }
-
-    contentArea.innerHTML = `
-      <div id="online-feed-list" class="yt-video-grid"></div>
-    `;
-
-    this.renderVideoCards(liked);
-  }
-
-  renderPlaylists(playlists) {
-    const contentArea = document.getElementById('online-content-area');
-    if (!contentArea) return;
-
-    if (playlists.length === 0) {
-      contentArea.innerHTML = `
-        <div class="empty-state" style="padding:40px 20px;">
-          <p class="empty-title">Chưa có Playlist nào</p>
-          <p style="color:var(--text-muted);font-size:0.85rem;margin:8px auto 16px;">
-            Tài khoản của bạn chưa có playlist nào.
-          </p>
-        </div>
-      `;
-      return;
-    }
-
-    contentArea.innerHTML = `
-      <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(240px, 1fr));gap:16px;">
-        ${playlists.map(pl => `
-          <div class="yt-playlist-card" style="background:var(--bg-surface);border-radius:var(--radius-lg);overflow:hidden;border:1px solid var(--border-subtle);display:flex;flex-direction:column;">
-            <div style="position:relative;aspect-ratio:16/9;background:var(--bg-elevated);overflow:hidden;">
-              <img src="${pl.thumbnail || ''}" alt="" style="width:100%;height:100%;object-fit:cover;">
-              <div style="position:absolute;bottom:0;right:0;background:rgba(0,0,0,0.8);color:#fff;font-size:0.75rem;padding:4px 8px;border-top-left-radius:6px;display:flex;align-items:center;gap:4px;">
-                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="8" y1="6" x2="21" y2="6"/>
-                  <line x1="8" y1="12" x2="21" y2="12"/>
-                  <line x1="8" y1="18" x2="21" y2="18"/>
-                  <line x1="3" y1="6" x2="3.01" y2="6"/>
-                  <line x1="3" y1="12" x2="3.01" y2="12"/>
-                  <line x1="3" y1="18" x2="3.01" y2="18"/>
-                </svg>
-                <span>${pl.itemCount || 0} bài</span>
-              </div>
-            </div>
-            <div style="padding:12px;display:flex;flex-direction:column;flex:1;justify-content:space-between;gap:8px;">
-              <div>
-                <h4 style="font-size:0.88rem;font-weight:600;margin:0 0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${this.escapeHtml(pl.title)}">
-                  ${this.escapeHtml(pl.title)}
-                </h4>
-                ${pl.description ? `
-                <p style="font-size:0.75rem;color:var(--text-muted);margin:0;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">
-                  ${this.escapeHtml(pl.description)}
-                </p>` : ''}
-              </div>
-              <div style="display:flex;gap:6px;margin-top:6px;">
-                <button class="btn-primary btn-play-yt-playlist" data-id="${pl.id}" data-type="audio" data-title="${this.escapeHtml(pl.title)}" style="flex:1;font-size:0.78rem;padding:6px 8px;min-height:32px;display:inline-flex;align-items:center;justify-content:center;gap:4px;" title="Nghe playlist">
-                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M9 18V5l12-2v13" />
-                    <circle cx="6" cy="18" r="3" />
-                    <circle cx="18" cy="16" r="3" />
-                  </svg>
-                  <span>Nghe</span>
-                </button>
-                <button class="pill-btn btn-play-yt-playlist" data-id="${pl.id}" data-type="video" data-title="${this.escapeHtml(pl.title)}" style="flex:1;font-size:0.78rem;padding:6px 8px;min-height:32px;display:inline-flex;align-items:center;justify-content:center;gap:4px;" title="Xem playlist video">
-                  <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
-                    <polygon points="5 3 19 12 5 21 5 3"/>
-                  </svg>
-                  <span>Video</span>
-                </button>
-                <a href="https://www.youtube.com/playlist?list=${pl.id}" target="_blank" class="pill-btn" style="font-size:0.78rem;padding:6px 10px;min-height:32px;display:inline-flex;align-items:center;" title="Mở liên kết">
-                  ${icons.externalLink}
-                </a>
-              </div>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-    `;
-
-    contentArea.querySelectorAll('.btn-play-yt-playlist').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const id = btn.dataset.id;
-        const title = btn.dataset.title;
-        const mediaType = btn.dataset.type || 'audio';
-        const originalHtml = btn.innerHTML;
-        btn.disabled = true;
-        btn.textContent = 'Đang tải...';
-        try {
-          const info = await api.youtube.info(`https://www.youtube.com/playlist?list=${id}`);
-          const entries = (info.items || info.entries || (info.id ? [info] : []))
-            .filter(it => it && it.id && it.title !== '[Private video]' && it.title !== '[Deleted video]');
-          if (entries.length === 0) throw new Error('Playlist không có bài hát nào hoặc là playlist riêng tư');
-
-          const queue = entries.map(it => ({
-            id: `yt_${it.id}_${mediaType}`,
-            youtubeId: it.id,
-            title: it.title,
-            artist: it.channel || title,
-            album: title,
-            duration_sec: it.duration || 0,
-            media_type: mediaType,
-            isOnline: true,
-            isPlaylist: true,
-            thumbnail_url: it.thumbnail,
-            publishedTime: it.publishedTime || ''
-          }));
-
-          store.set({ queue, originalQueue: queue, isPlaylistMode: true });
-          this.player.loadOnlineTrack(queue[0], true);
-          this.player?.showToast(`Đang phát playlist "${title}" (${queue.length} bài)`);
-        } catch (err) {
-          alert('Lỗi phát playlist: ' + err.message);
-        } finally {
-          btn.disabled = false;
-          btn.innerHTML = originalHtml;
-        }
-      });
-    });
-  }
-
   async fetchFeed(topic = '') {
     this.currentQuery = '';
     this.page = 1;
@@ -644,7 +322,7 @@ export class OnlineView {
     }
 
     if (listEl) {
-      listEl.innerHTML = Array(6).fill(0).map(() => `
+      listEl.innerHTML = Array(8).fill(0).map(() => `
         <div class="video-card skeleton-card">
           <div class="skeleton-shimmer skeleton-thumb-16-9"></div>
           <div class="video-info" style="gap:8px;padding-top:6px;">
@@ -657,12 +335,10 @@ export class OnlineView {
 
     this.isSearch = false;
     try {
-      const feed = await api.soundcloud.getFeed(topic, { page: 1 });
+      const feed = await api.online.getFeed(topic, { page: 1 });
       this.feedItems = feed.items || [];
       this.allItems = [...this.feedItems];
-      if (this.activeChip === 'all') {
-        this.renderVideoCards(this.feedItems, false, false);
-      }
+      this.renderVideoCards(this.feedItems, false, false);
     } catch (err) {
       if (listEl) {
         this.renderOfflineState(listEl);
@@ -685,7 +361,7 @@ export class OnlineView {
     }
 
     if (listEl) {
-      listEl.innerHTML = Array(6).fill(0).map(() => `
+      listEl.innerHTML = Array(8).fill(0).map(() => `
         <div class="video-card skeleton-card">
           <div class="skeleton-shimmer skeleton-thumb-16-9"></div>
           <div class="video-info" style="gap:8px;padding-top:6px;">
@@ -697,12 +373,10 @@ export class OnlineView {
     }
 
     try {
-      const res = await api.soundcloud.search(query, { page: 1 });
+      const res = await api.online.search(query, { page: 1 });
       this.searchItems = res.items || [];
       this.allItems = [...this.searchItems];
-      if (this.activeChip === 'all') {
-        this.renderVideoCards(this.searchItems, true, false);
-      }
+      this.renderVideoCards(this.searchItems, true, false);
     } catch (err) {
       if (listEl) {
         this.renderOfflineState(listEl);
@@ -736,14 +410,14 @@ export class OnlineView {
     }
 
     const cardsHtml = uniqueItems.map(item => {
-      const durStr = this.player.formatTime(item.duration || 0);
+      const durStr = this.player.formatTime(item.duration || item.duration_sec || 0);
       const viewsStr = item.viewsText || this.formatViews(item.views);
-      const initial = (item.channel || 'Y').trim().charAt(0).toUpperCase();
+      const initial = (item.channel || item.artist || 'M').trim().charAt(0).toUpperCase();
 
       return `
         <div class="yt-video-card" data-id="${item.id}">
           <div class="yt-thumb-container">
-            <img class="yt-thumb-img" src="${item.thumbnail}" alt="" loading="lazy">
+            <img class="yt-thumb-img" src="${item.thumbnail || item.thumbnail_url || ''}" alt="" loading="lazy">
             ${durStr ? `<span class="yt-thumb-duration">${durStr}</span>` : ''}
             <div class="yt-thumb-hover-overlay">
               <div class="yt-thumb-play-circle" title="Phát ngay">
@@ -755,7 +429,7 @@ export class OnlineView {
           </div>
 
           <div class="yt-card-info-row">
-            <div class="yt-channel-avatar" title="${this.escapeHtml(item.channel || '')}">
+            <div class="yt-channel-avatar" title="${this.escapeHtml(item.channel || item.artist || '')}">
               ${initial}
             </div>
 
@@ -765,7 +439,7 @@ export class OnlineView {
               </h3>
               
               <div class="yt-card-channel-name">
-                <span>${this.escapeHtml(item.channel || '')}</span>
+                <span>${this.escapeHtml(item.channel || item.artist || '')}</span>
               </div>
 
               <div class="yt-card-stats">
@@ -833,29 +507,23 @@ export class OnlineView {
         e.stopPropagation();
         animateFlyToCorner(dlBtn, item);
 
+        const trackData = {
+          ...item,
+          id: `online_${item.id}_audio`,
+          onlineId: String(item.id),
+          soundcloudId: String(item.id),
+          isOnline: true,
+          thumbnail_url: item.thumbnail || item.thumbnail_url,
+          artist: item.channel || item.artist || 'Nghệ sĩ'
+        };
+
         if (this.player && this.player.downloadTrackAudio) {
-          this.player.downloadTrackAudio({
-            ...item,
-            id: `sc_${item.id}_audio`,
-            soundcloudId: String(item.id),
-            youtubeId: String(item.id),
-            isOnline: true,
-            thumbnail_url: item.thumbnail || item.thumbnail_url,
-            artist: item.channel || item.artist || 'Nghệ sĩ'
-          }, dlBtn);
+          this.player.downloadTrackAudio(trackData, dlBtn);
         } else if (this.player && this.player.showDownloadModalForTrack) {
-          this.player.showDownloadModalForTrack({
-            ...item,
-            id: `sc_${item.id}_audio`,
-            soundcloudId: String(item.id),
-            youtubeId: String(item.id),
-            isOnline: true,
-            thumbnail_url: item.thumbnail || item.thumbnail_url,
-            artist: item.channel || item.artist || 'Nghệ sĩ'
-          }, dlBtn);
+          this.player.showDownloadModalForTrack(trackData, dlBtn);
         } else {
-          api.soundcloud.download({
-            url: item.url || `https://soundcloud.com/tracks/${item.id}`,
+          api.online.download({
+            url: item.url || (item.id ? `https://soundcloud.com/tracks/${item.id}` : null),
             id: item.id,
             mediaType: 'audio',
             quality: 'HQ',
@@ -913,10 +581,10 @@ export class OnlineView {
     try {
       let newItems = [];
       if (this.currentQuery) {
-        const res = await api.soundcloud.search(this.currentQuery, { page: this.page });
+        const res = await api.online.search(this.currentQuery, { page: this.page });
         newItems = (res.items || []).filter(it => !this.renderedVideoIds.has(it.id));
       } else {
-        const feed = await api.soundcloud.getFeed(this.activeTopic || '', { page: this.page });
+        const feed = await api.online.getFeed('', { page: this.page });
         newItems = (feed.items || []).filter(it => !this.renderedVideoIds.has(it.id));
       }
 
@@ -957,20 +625,19 @@ export class OnlineView {
     }
     store.set({ isPlaylistMode: false });
 
-    // Seed playback with this SoundCloud track & trigger radio Up Next
     const singleTrack = {
-      id: `sc_${item.id}_audio`,
+      id: `online_${item.id}_audio`,
+      onlineId: String(item.id),
       soundcloudId: String(item.id),
-      youtubeId: String(item.id),
       title: item.title,
       artist: item.channel || item.artist || 'Nghệ sĩ',
-      album: 'SoundCloud Trực Tuyến',
-      duration_sec: item.duration || 0,
+      album: 'Nhạc Trực Tuyến',
+      duration_sec: item.duration || item.duration_sec || 0,
       media_type: 'audio',
       isOnline: true,
       thumbnail_url: item.thumbnail || item.thumbnail_url,
       publishedTime: item.publishedTime || '',
-      source: 'soundcloud'
+      source: 'online'
     };
 
     store.set({ queue: [singleTrack], originalQueue: [singleTrack], isPlaylistMode: false });

@@ -1,9 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import { spawn } from 'child_process';
 import { db } from '../db.js';
 import { config } from '../config.js';
-import { getJsRuntimeArgs, getClientArgs, getCookieArgs, normalizeYouTubeId } from './ytdlp.js';
 
 // Ensure lyrics_cache table exists
 db.exec(`
@@ -27,7 +25,7 @@ function cleanChannelName(channel = '') {
   let cleaned = channel.trim();
 
   // If the channel is pure aggregator/network, clear it so it doesn't pollute metadata
-  if (/^(nhacpro|pops|vie channel|zing|nhaccuatui|metub|dien quan|yeah1|youtube)/i.test(cleaned)) {
+  if (/^(nhacpro|pops|vie channel|zing|nhaccuatui|metub|dien quan|yeah1)/i.test(cleaned)) {
     return '';
   }
 
@@ -40,7 +38,7 @@ function cleanChannelName(channel = '') {
 }
 
 /**
- * Clean noisy titles from YouTube and music releases
+ * Clean noisy titles from music releases
  */
 export function cleanMetadata(rawTitle = '', rawArtist = '') {
   let title = (rawTitle || '').trim();
@@ -49,7 +47,7 @@ export function cleanMetadata(rawTitle = '', rawArtist = '') {
   // Remove leading track numbers like "01. ", "07. ", "1 - "
   title = title.replace(/^(\d+[\.\-\s]+)+/, '');
 
-  // Remove common YouTube tags in brackets/parentheses
+  // Remove common media tags in brackets/parentheses
   title = title
     .replace(/\[[^\]]*(official|audio|video|mv|lyric|lyrics|prod|album|remix|hd|4k|m\/v|pnj)[^\]]*\]/gi, '')
     .replace(/\([^\)]*(official|audio|video|mv|lyric|lyrics|prod|album|remix|hd|4k|m\/v|cover|theme song)[^\)]*\)/gi, '')
@@ -155,98 +153,7 @@ export function parseLrc(lrcText = '') {
   return result.sort((a, b) => a.time - b.time);
 }
 
-/**
- * Fetch synchronized subtitles/captions directly from YouTube video
- */
-export async function fetchYouTubeCaptions(youtubeId) {
-  if (!youtubeId || typeof youtubeId !== 'string') return null;
-  const cleanId = normalizeYouTubeId(youtubeId);
-  if (!cleanId || cleanId.length !== 11) return null;
 
-  return new Promise((resolve) => {
-    const ytdlpBin = config.getYtDlpPath();
-    const args = [
-      ...getJsRuntimeArgs(),
-      ...getClientArgs(),
-      '--dump-single-json',
-      '--no-playlist',
-      '--skip-download',
-      ...getCookieArgs(),
-      `https://www.youtube.com/watch?v=${cleanId}`
-    ];
-
-    const child = spawn(ytdlpBin, args);
-    let stdout = '';
-    let stderr = '';
-
-    const timer = setTimeout(() => {
-      try { child.kill(); } catch {}
-      resolve(null);
-    }, 10000);
-
-    child.stdout.on('data', chunk => { stdout += chunk; });
-    child.stderr.on('data', chunk => { stderr += chunk; });
-
-    child.on('close', async (code) => {
-      clearTimeout(timer);
-      if (code !== 0 || !stdout) return resolve(null);
-      try {
-        const json = JSON.parse(stdout);
-        const subTracks = json.subtitles || {};
-        const autoTracks = json.automatic_captions || {};
-
-        // Find best subtitle track (Vietnamese first, then English, then original language)
-        const track = subTracks.vi || subTracks['vi-orig'] || autoTracks.vi || autoTracks['vi-orig'] ||
-                      subTracks.en || autoTracks.en ||
-                      Object.values(subTracks).find(t => Array.isArray(t) && t[0]?.url) ||
-                      Object.values(autoTracks).find(t => Array.isArray(t) && t[0]?.url);
-
-        if (!track || !track[0]?.url) return resolve(null);
-
-        const res = await fetch(track[0].url, { signal: AbortSignal.timeout(6000) });
-        if (!res.ok) return resolve(null);
-        const data = await res.json();
-
-        if (!data.events || !Array.isArray(data.events)) return resolve(null);
-
-        const parsed = [];
-        for (const ev of data.events) {
-          if (!ev.segs || ev.tStartMs === undefined) continue;
-          const text = ev.segs.map(s => s.utf8 || '').join('').replace(/\n/g, ' ').trim();
-          // Skip sound-effect annotations
-          if (!text || text === '[âm nhạc]' || text === '[Music]' || text === '[Vỗ tay]') continue;
-          const timeSec = parseFloat((ev.tStartMs / 1000).toFixed(2));
-          parsed.push({ time: timeSec, text });
-        }
-
-        if (parsed.length === 0) return resolve(null);
-
-        const lrcLines = parsed.map(p => {
-          const min = Math.floor(p.time / 60);
-          const sec = (p.time % 60).toFixed(2);
-          return `[${String(min).padStart(2, '0')}:${String(sec).padStart(5, '0')}] ${p.text}`;
-        });
-
-        resolve({
-          title: json.title || '',
-          artist: json.uploader || json.channel || '',
-          syncedLyrics: lrcLines.join('\n'),
-          plainLyrics: parsed.map(p => p.text).join('\n'),
-          parsedLyrics: parsed,
-          hasSynced: true,
-          source: 'youtube_captions'
-        });
-      } catch (e) {
-        resolve(null);
-      }
-    });
-
-    child.on('error', () => {
-      clearTimeout(timer);
-      resolve(null);
-    });
-  });
-}
 
 /**
  * Fetch lyrics from LRCLIB API with smart fallbacks
@@ -330,20 +237,13 @@ async function queryLrclib(title, artist, duration = 0) {
 /**
  * Main service to get lyrics for a track (local or online)
  */
-export async function getLyrics({ trackId = '', youtubeId = '', title = '', artist = '', duration = 0 }) {
+export async function getLyrics({ trackId = '', title = '', artist = '', duration = 0 }) {
   let cleanT = title;
   let cleanA = artist;
   let dur = parseFloat(duration) || 0;
-  let ytId = normalizeYouTubeId(youtubeId);
-
-  // If trackId starts with yt_, extract youtubeId
-  if (!ytId && trackId && trackId.startsWith('yt_')) {
-    const parts = trackId.split('_');
-    if (parts[1]) ytId = normalizeYouTubeId(parts[1]);
-  }
 
   // 1. If local track ID provided, check local database and filesystem first
-  if (trackId && !trackId.startsWith('yt_')) {
+  if (trackId && !trackId.startsWith('sc_') && !trackId.startsWith('yt_')) {
     const localTrack = db.prepare('SELECT * FROM tracks WHERE id = ?').get(trackId);
     if (localTrack) {
       cleanT = cleanT || localTrack.title;
@@ -385,7 +285,7 @@ export async function getLyrics({ trackId = '', youtubeId = '', title = '', arti
   cleanT = cleaned.title;
   cleanA = cleaned.artist;
 
-  const cacheKey = ytId ? `yt_${ytId}` : `${cleanT.toLowerCase()}_${cleanA.toLowerCase()}`;
+  const cacheKey = `${cleanT.toLowerCase()}_${cleanA.toLowerCase()}`;
 
   // 2. Check SQLite cache
   const cached = db.prepare('SELECT * FROM lyrics_cache WHERE cache_key = ?').get(cacheKey);
@@ -404,18 +304,8 @@ export async function getLyrics({ trackId = '', youtubeId = '', title = '', arti
   }
 
   let fetched = null;
-
-  // 3. If online YouTube track, try YouTube Captions first (exact subtitle sync)
-  if (ytId) {
-    try {
-      fetched = await fetchYouTubeCaptions(ytId);
-    } catch (e) {
-      console.warn('YouTube captions fetch failed:', e.message);
-    }
-  }
-
-  // 4. If no captions or local track, query LRCLIB
-  if (!fetched && cleanT) {
+  // 3. Query LRCLIB
+  if (cleanT) {
     fetched = await queryLrclib(cleanT, cleanA, dur);
   }
 

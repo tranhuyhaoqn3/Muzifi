@@ -3,7 +3,6 @@ import path from 'path';
 import https from 'https';
 import http from 'http';
 import { config } from '../config.js';
-import { getStreamUrl, normalizeYouTubeId } from './ytdlp.js';
 import { getSoundCloudStreamUrl } from './soundcloud.js';
 
 // Maximum cache storage size: 1.5 GB (~350 full audio tracks)
@@ -75,13 +74,8 @@ export async function cacheStreamInBackground(rawVideoId, mediaType = 'audio', s
   try {
     let urlToDownload = streamUrl;
     if (!urlToDownload) {
-      if (/^\d+$/.test(v) || String(rawVideoId).startsWith('sc_')) {
-        const resolved = await getSoundCloudStreamUrl(v);
-        urlToDownload = resolved.streamUrl;
-      } else {
-        const resolved = await getStreamUrl(v, mediaType);
-        urlToDownload = resolved.streamUrl;
-      }
+      const resolved = await getSoundCloudStreamUrl(v);
+      urlToDownload = resolved.streamUrl;
     }
 
     if (!urlToDownload) {
@@ -166,13 +160,10 @@ export async function preloadTrack(rawVideoId, mediaType = 'audio') {
   }
 
   let streamUrl = null;
-  if (/^\d+$/.test(v) || String(rawVideoId).startsWith('sc_')) {
+  try {
     const resolved = await getSoundCloudStreamUrl(v);
     streamUrl = resolved.streamUrl;
-  } else {
-    const resolved = await getStreamUrl(v, mediaType);
-    streamUrl = resolved.streamUrl;
-  }
+  } catch {}
 
   // Start caching audio in background
   if (streamUrl) {

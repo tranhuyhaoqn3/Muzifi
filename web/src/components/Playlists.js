@@ -497,7 +497,7 @@ export class PlaylistsView {
       }
     });
 
-    // YouTube Import Logic
+    // Online URL Import Logic
     const urlInput = modal.querySelector('#yt-playlist-url-input');
     const fetchBtn = modal.querySelector('#btn-fetch-yt-pl');
     const previewEl = modal.querySelector('#yt-playlist-preview');
@@ -515,7 +515,7 @@ export class PlaylistsView {
       fetchBtn.disabled = true;
 
       try {
-        const info = await api.youtube.info(url);
+        const info = await api.online.info(url);
         loadingEl.style.display = 'none';
         fetchBtn.disabled = false;
 
@@ -526,7 +526,7 @@ export class PlaylistsView {
 
         loadedInfo = {
           title: info.title || 'Danh sách phát',
-          channel: info.channel || '',
+          channel: info.channel || info.artist || '',
           items
         };
 
@@ -539,7 +539,7 @@ export class PlaylistsView {
             <span style="color:var(--text-muted);min-width:20px;">${idx + 1}</span>
             <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
               <span style="font-weight:500;color:var(--text-primary);">${this.escapeHtml(it.title)}</span>
-              <span style="color:var(--text-muted);margin-left:6px;">${this.escapeHtml(it.channel || '')}</span>
+              <span style="color:var(--text-muted);margin-left:6px;">${this.escapeHtml(it.channel || it.artist || '')}</span>
             </div>
           </div>
         `).join('');
@@ -561,15 +561,16 @@ export class PlaylistsView {
     modal.querySelector('#btn-stream-yt-pl').addEventListener('click', () => {
       if (!loadedInfo || !loadedInfo.items.length) return;
       const onlineTracks = loadedInfo.items.map(it => ({
-        id: `yt_${it.id}_audio`,
-        youtubeId: it.id,
+        id: `online_${it.id}_audio`,
+        onlineId: it.id,
+        soundcloudId: it.id,
         title: it.title,
-        artist: it.channel || 'Nghệ sĩ',
+        artist: it.channel || it.artist || 'Nghệ sĩ',
         album: loadedInfo.title || 'Danh sách phát',
-        duration_sec: it.duration || 0,
+        duration_sec: it.duration || it.duration_sec || 0,
         media_type: 'audio',
         isOnline: true,
-        thumbnail_url: it.thumbnail
+        thumbnail_url: it.thumbnail || it.thumbnail_url
       }));
       store.set({ queue: onlineTracks, originalQueue: onlineTracks, isPlaylistMode: false });
       this.player.loadOnlineTrack(onlineTracks[0], true);
@@ -584,12 +585,12 @@ export class PlaylistsView {
       btn.disabled = true;
       btn.textContent = 'Đang bắt đầu tải...';
       try {
-        await api.youtube.download({
+        await api.online.download({
           items: loadedInfo.items,
           createPlaylist: true,
           playlistName: loadedInfo.title || 'Danh sách phát',
           mediaType: 'audio',
-          quality: '720p'
+          quality: 'HQ'
         });
         modal.remove();
         this.player?.showToast(`Đã thêm ${loadedInfo.items.length} bài hát vào hàng đợi tải offline cho playlist "${loadedInfo.title}"!`, 4000);
