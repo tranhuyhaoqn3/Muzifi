@@ -18,6 +18,7 @@ import playlistsRouter from './routes/playlists.js';
 import playerRouter from './routes/player.js';
 import systemRouter from './routes/system.js';
 import lyricsRouter from './routes/lyrics.js';
+import { initGeminiWeeklyScheduler } from './services/geminiRecommend.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,6 +26,9 @@ const ROOT_DIR = path.resolve(__dirname, '..');
 
 // Initialize database
 initDatabase();
+
+// Initialize Gemini weekly recommendation scheduler
+initGeminiWeeklyScheduler();
 
 const app = express();
 app.disable('x-powered-by');

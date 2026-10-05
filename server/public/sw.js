@@ -29,7 +29,7 @@ const SHELL_ASSETS = [
   '/fonts/plus-jakarta-sans-latin-ext.woff2',
   '/fonts/plus-jakarta-sans-cyrillic.woff2',
   '/assets/main-Codf8fWC.css',
-  '/assets/main-DAkB4Nxz.js'
+  '/assets/main-CTiC3y_A.js'
 ];
 
 // ─── Install ──────────────────────────────────────────────

@@ -122,6 +122,7 @@ export const api = {
     getQualities: (v) => request('/api/youtube/qualities?v=' + encodeURIComponent(v)),
     meData: () => request('/api/youtube/me-data'),
     syncMeData: () => request('/api/youtube/me-data/sync', { method: 'POST' }),
+    getRecommendations: (force = false) => request('/api/youtube/recommendations' + (force ? '?force=true' : '')),
   },
   jobs: {
     list: () => request('/api/jobs'),
