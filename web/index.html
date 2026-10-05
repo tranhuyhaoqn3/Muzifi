@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Muzifi - Nghe Nhạc Offline & Tải Nhạc Miễn Phí</title>
+  
+  <meta name="application-name" content="Muzifi">
+  <meta property="og:title" content="Muzifi - Nghe Nhạc Offline & Tải Nhạc Miễn Phí">
+  <meta property="og:site_name" content="Muzifi">
+  <meta name="description" content="Nghe nhạc offline miễn phí, tải nhạc chất lượng cao & phát nhạc nền không gián đoạn!">
+  
+  <!-- iOS Safari & PWA Optimization -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="Muzifi">
+  <meta name="format-detection" content="telephone=no">
+  <meta name="theme-color" content="#0f0f0f">
+
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="shortcut icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon-180x180.png">
+  <link rel="apple-touch-icon" sizes="167x167" href="/apple-touch-icon-167x167.png">
+  <link rel="apple-touch-icon" sizes="152x152" href="/apple-touch-icon-152x152.png">
+
+  <link rel="stylesheet" href="/src/style.css">
+
+  <!-- Critical Synchronous CSS to prevent iOS PWA black screen on resume -->
+  <style>
+    html {
+      background-color: #0f0f0f !important;
+      color: #e8e8e8;
+      width: 100%;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background-color: #0f0f0f !important;
+      color: #e8e8e8;
+      width: 100%;
+      margin: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+    #app {
+      min-height: 100vh;
+      min-height: -webkit-fill-available;
+      display: flex;
+      flex-direction: column;
+      background-color: #0f0f0f;
+    }
+    h1.logo-text {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin: 0;
+      display: inline-block;
+      line-height: 1;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- Single Persistent Core Audio Element (REUSED FOR BACKGROUND AUDIO, OUTSIDE MODAL) -->
+    <audio id="core-audio" preload="auto" playsinline webkit-playsinline style="display:none;"></audio>
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <div class="logo">
+          <img src="/logo.png" alt="Muzifi" class="logo-img">
+        </div>
+      </div>
+      <div class="header-right">
+        <button id="btn-header-jobs" class="header-jobs-btn is-idle" title="Tiến trình tải nhạc" aria-label="Tiến trình tải nhạc">
+          <div class="jobs-icon-wrap">
+            <svg class="dl-ring" viewBox="0 0 36 36">
+              <path class="dl-ring-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke-width="3"/>
+              <path id="jobs-ring-fill" class="dl-ring-fill" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="var(--accent-primary, #6366f1)" stroke-width="3" stroke-linecap="round"/>
+            </svg>
+            <span class="jobs-icon-inner" id="jobs-icon-symbol">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </span>
+          </div>
+          <span id="jobs-percent-badge" class="jobs-percent-text" style="display:none;">0%</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main View Container -->
+    <main id="main-view" class="main-content">
+      <noscript>
+        <div style="padding: 40px 20px; text-align: center;">
+          <h1>Muzifi</h1>
+          <p>Nghe Nhạc Offline &amp; Tải Nhạc Miễn Phí</p>
+        </div>
+      </noscript>
+    </main>
+
+    <!-- Bottom Navigation Bar (Mobile-first, >=44px) -->
+    <nav class="bottom-nav">
+      <button class="nav-item active" data-tab="library">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 18V5l12-2v13" />
+          <circle cx="6" cy="18" r="3" />
+          <circle cx="18" cy="16" r="3" />
+        </svg>
+        <span>Thư viện</span>
+      </button>
+      <button class="nav-item" data-tab="online">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10" />
+          <line x1="2" y1="12" x2="22" y2="12" />
+          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+        </svg>
+        <span>Trực tuyến</span>
+      </button>
+      <button class="nav-item" data-tab="playlists">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="8" y1="6" x2="21" y2="6" />
+          <line x1="8" y1="12" x2="21" y2="12" />
+          <line x1="8" y1="18" x2="21" y2="18" />
+          <line x1="3" y1="6" x2="3.01" y2="6" />
+          <line x1="3" y1="12" x2="3.01" y2="12" />
+          <line x1="3" y1="18" x2="3.01" y2="18" />
+        </svg>
+        <span>Playlist</span>
+      </button>
+      <button class="nav-item" data-tab="settings" style="position:relative;">
+        <span class="badge" id="settings-jobs-badge" style="display:none;position:absolute;top:4px;right:calc(50% - 18px);font-size:0.65rem;min-width:16px;height:16px;padding:0 4px;">0</span>
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+        <span>Cài đặt</span>
+      </button>
+    </nav>
+
+    <!-- Mini Player (Persistent Bottom Bar above Nav) -->
+    <div id="mini-player" class="mini-player" style="display:none;">
+      <div class="mini-progress-bar">
+        <div class="mini-progress-fill" id="mini-progress-fill"></div>
+      </div>
+      <div class="mini-content" id="mini-click-area">
+        <img id="mini-thumb" class="mini-thumb" src="/api/tracks/placeholder/thumb" alt="Cover">
+        <div class="mini-info">
+          <div id="mini-title" class="mini-title">Chưa chọn bài</div>
+          <div id="mini-artist" class="mini-artist">Nghệ sĩ</div>
+        </div>
+      </div>
+      <div class="mini-controls">
+        <button id="mini-btn-queue" class="icon-btn mini-btn" title="Danh sách bài tiếp theo">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="8" y1="6" x2="21" y2="6" />
+            <line x1="8" y1="12" x2="21" y2="12" />
+            <line x1="8" y1="18" x2="21" y2="18" />
+            <line x1="3" y1="6" x2="3.01" y2="6" />
+            <line x1="3" y1="12" x2="3.01" y2="12" />
+            <line x1="3" y1="18" x2="3.01" y2="18" />
+          </svg>
+        </button>
+        <button id="mini-btn-prev" class="icon-btn mini-btn" title="Bài trước">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="19 20 9 12 19 4 19 20" />
+            <line x1="5" y1="19" x2="5" y2="5" />
+          </svg>
+        </button>
+        <button id="mini-btn-play" class="play-btn-circle" title="Phát/Tạm dừng">
+          <svg id="mini-play-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+            <polygon points="5 3 19 12 5 21 5 3" />
+          </svg>
+        </button>
+        <button id="mini-btn-next" class="icon-btn mini-btn" title="Bài tiếp theo">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 4 15 12 5 20 5 4" />
+            <line x1="19" y1="5" x2="19" y2="19" />
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Full Player Modal -->
+    <div id="full-player" class="full-player-modal" style="display:none;">
+      <!-- Drag down indicator on mobile -->
+      <div class="drag-handle" id="player-drag-handle"></div>
+
+      <div class="player-top-bar">
+        <button id="player-btn-close" class="icon-btn" title="Thu nhỏ">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
+        <div class="player-header-title">Đang phát</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button id="btn-player-download" class="icon-btn" title="Tải bài đang phát về máy" style="display:none;width:36px;height:36px;color:var(--text-primary);">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+          </button>
+          <button id="btn-playback-rate" class="topbar-pill-btn" title="Tốc độ phát">1.0x</button>
+          <button id="btn-sleep-timer" class="icon-btn" title="Hẹn giờ ngủ">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+            <span id="sleep-timer-text" class="badge" style="display:none;"></span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Media Display Area: Artwork (Audio) -->
+      <div class="player-media-container" id="player-media-box">
+        <!-- Loading overlay: shown while buffering stream -->
+        <div id="player-loading-overlay" class="player-loading-overlay" style="display:none;">
+          <div class="player-spinner"></div>
+          <span class="player-loading-text">Đang tải...</span>
+        </div>
+        <!-- Audio Cover View -->
+        <div id="player-audio-view" class="audio-artwork-box">
+          <img id="player-artwork" class="player-artwork-img" src="" alt="Album Artwork">
+        </div>
+      </div>
+
+      <!-- Track Information -->
+      <div class="player-meta">
+        <div class="player-title-row">
+          <div class="meta-texts">
+            <h2 id="player-title" class="player-title">Tên bài hát</h2>
+            <p id="player-artist" class="player-artist">Nghệ sĩ</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scrubber Timeline Slider -->
+      <div class="scrubber-section">
+        <div class="scrubber-bar" id="scrubber-track">
+          <div class="scrubber-fill" id="scrubber-fill"></div>
+          <div class="scrubber-handle" id="scrubber-handle"></div>
+        </div>
+        <div class="scrubber-times">
+          <span id="player-time-current">0:00</span>
+          <span id="player-time-total">0:00</span>
+        </div>
+      </div>
+
+      <!-- Primary Controls -->
+      <div class="player-primary-ctrls">
+        <button id="btn-shuffle" class="icon-btn ctrl-btn" title="Xáo trộn bài (Bật / Tắt)">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="16 3 21 3 21 8" />
+            <line x1="4" y1="20" x2="21" y2="3" />
+            <polyline points="21 16 21 21 16 21" />
+            <line x1="15" y1="15" x2="21" y2="21" />
+            <line x1="4" y1="4" x2="9" y2="9" />
+          </svg>
+        </button>
+
+        <button id="btn-prev" class="icon-btn ctrl-btn" title="Bài trước">
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="19 20 9 12 19 4 19 20" />
+            <line x1="5" y1="19" x2="5" y2="5" />
+          </svg>
+        </button>
+
+        <button id="btn-play-pause" class="player-main-play-btn" title="Phát/Tạm dừng">
+          <svg id="main-play-icon" viewBox="0 0 24 24" width="30" height="30" fill="currentColor">
+            <polygon points="5 3 19 12 5 21 5 3" />
+          </svg>
+        </button>
+
+        <button id="btn-next" class="icon-btn ctrl-btn" title="Bài kế tiếp">
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 4 15 12 5 20 5 4" />
+            <line x1="19" y1="5" x2="19" y2="19" />
+          </svg>
+        </button>
+
+        <button id="btn-loop" class="icon-btn ctrl-btn" title="Chế độ lặp (Tắt / Tất cả / 1 bài)">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="17 1 21 5 17 9" />
+            <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+            <polyline points="7 23 3 19 7 15" />
+            <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+          </svg>
+          <span id="loop-subscript" class="loop-sub"></span>
+        </button>
+      </div>
+
+      <!-- YouTube Music Bottom Tabs: TIẾP THEO & LỜI BÀI HÁT -->
+      <div class="ytm-player-tabs">
+        <button id="tab-btn-upnext" class="ytm-tab-btn" title="Danh sách bài tiếp theo">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="8" y1="6" x2="21" y2="6" />
+            <line x1="8" y1="12" x2="21" y2="12" />
+            <line x1="8" y1="18" x2="21" y2="18" />
+            <circle cx="4" cy="6" r="1.5" fill="currentColor" />
+            <circle cx="4" cy="12" r="1.5" fill="currentColor" />
+            <circle cx="4" cy="18" r="1.5" fill="currentColor" />
+          </svg>
+          <span>DANH SÁCH PHÁT</span>
+        </button>
+
+        <button id="tab-btn-lyrics" class="ytm-tab-btn" title="Lời bài hát">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 18V5l12-2v13" />
+            <circle cx="6" cy="18" r="3" />
+            <circle cx="18" cy="16" r="3" />
+          </svg>
+          <span>LỜI BÀI HÁT</span>
+        </button>
+      </div>
+
+      <!-- Up Next Overlay (YouTube Music style) -->
+      <div id="player-upnext-view" class="player-sheet-overlay" style="display:none;">
+        <div class="sheet-drag-handle" id="upnext-drag-handle"></div>
+        <div class="sheet-header">
+          <div class="sheet-title-box">
+            <span class="sheet-badge">Danh sách phát</span>
+          </div>
+          <button id="btn-upnext-close" class="icon-btn" title="Đóng"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
+        <div class="sheet-content-scroll" id="upnext-scroll-container">
+          <div id="upnext-content-wrapper"></div>
+        </div>
+      </div>
+
+      <!-- Synchronized Lyrics View Overlay (Apple Music / Spotify style) -->
+      <div id="player-lyrics-view" class="player-lyrics-overlay" style="display:none;">
+        <div class="lyrics-header">
+          <div class="lyrics-title-box">
+            <span class="lyrics-badge">Lời bài hát</span>
+            <div id="lyrics-track-title" class="lyrics-track-title">Tên bài hát</div>
+          </div>
+          <button id="btn-lyrics-close" class="icon-btn" title="Đóng lời bài hát"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
+        <div class="lyrics-content-scroll" id="lyrics-scroll-container">
+          <div id="lyrics-loading" class="lyrics-status-box" style="display:none;">
+            <div class="spinner"></div>
+            <span>Đang tìm lời bài hát...</span>
+          </div>
+          <div id="lyrics-empty" class="lyrics-status-box" style="display:none;">
+            <span>Chưa có lời cho bài hát này</span>
+          </div>
+          <div id="lyrics-lines-wrapper" class="lyrics-lines-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modals & Overlays -->
+    <div id="modal-container"></div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

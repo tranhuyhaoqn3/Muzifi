@@ -1,0 +1,209 @@
+Tài liệu yêu cầu: Web nghe nhạc / xem video cá nhân (Node.js, tối ưu iOS)
+1. Tổng quan
+Mục tiêu: web app tự host, dùng như "Spotify mini" cho một người dùng. Upload file hoặc dán link YouTube để tải về, tổ chức thành playlist, phát trên iPhone. Audio phải nghe được khi khóa màn hình.
+
+Nguyên tắc cốt lõi: mỗi bài thuộc một loại duy nhất: audio hoặc video, quyết định lúc thêm vào (theo đuôi file khi upload; theo lựa chọn của bạn khi tải YouTube). Player tự chọn thẻ <audio> hoặc <video> theo loại.
+
+Phạm vi: 1 user, mobile-first cho iOS Safari/PWA (iOS 16+), desktop chỉ cần dùng được.
+
+Quyết định đã chốt
+
+Mục	Quyết định
+Người dùng	1 người, một mật khẩu trong .env
+Định dạng lạ (mkv/webm/avi/wma…)	Tự chuyển đổi bằng ffmpeg (có cài đặt đổi sang "từ chối")
+Backend / DB	Node.js 20+ (Express hoặc Fastify) / SQLite (better-sqlite3)
+Frontend	Vanilla JS hoặc Svelte + Vite, PWA
+Host	Máy nhà (mini PC, NAS, Pi), truy cập qua Tailscale hoặc Cloudflare Tunnel (HTTPS)
+Ngoài phạm vi bản đầu	Tách audio từ video, nhiều user, chia sẻ, app native
+Ưu tiên: M bắt buộc, S nên có, C làm sau.
+
+2. Yêu cầu chức năng
+2.1 Xác thực
+ID	Yêu cầu	Ưu tiên
+AUTH-1	Đăng nhập bằng một mật khẩu (hash bcrypt/argon2), cookie httpOnly sống 30–90 ngày để iPhone không bị bắt đăng nhập lại	M
+AUTH-2	Mọi API và stream file đều yêu cầu đăng nhập (có thể tắt nếu chỉ truy cập qua Tailscale)	M
+AUTH-3	Giới hạn số lần đăng nhập sai	S
+2.2 Upload
+ID	Yêu cầu	Ưu tiên
+UP-1	Chọn nhiều file, hiện tiến trình từng file và tổng, hủy được	M
+UP-2	Phân loại theo đuôi: audio (mp3, m4a, aac, wav, flac), video (mp4, m4v, mov); xác nhận lại bằng ffprobe (nội dung thật ưu tiên hơn đuôi)	M
+UP-3	Định dạng iOS không phát ổn (mkv, webm, avi, ogg, opus, wma…): tự chuyển đổi qua hàng đợi (audio → m4a, video → mp4 H.264+AAC), hiện trạng thái "đang chuyển đổi"	M
+UP-4	Video có codec iOS không hỗ trợ (VP9/AV1…) cũng chuyển sang H.264 + AAC	S
+UP-5	Đọc metadata (title, artist, album, duration, ảnh bìa nhúng) bằng music-metadata; thiếu thì lấy tên file	M
+UP-6	Video: tạo thumbnail (frame ~10% thời lượng), lấy width/height	M
+UP-7	Giới hạn dung lượng mỗi file (mặc định 2 GB), báo lỗi rõ khi vượt hoặc khi đĩa gần đầy	M
+UP-8	Phát hiện trùng file bằng hash	C
+UP-9	Upload tiếp tục được khi đứt mạng (chunked)	C
+2.3 Tải từ YouTube
+ID	Yêu cầu	Ưu tiên
+YT-1	Ô dán link (video, playlist, youtu.be, music.youtube.com); validate whitelist domain, chặn SSRF	M
+YT-2	Lấy trước thông tin bằng yt-dlp --dump-json: tiêu đề, kênh, thumbnail, thời lượng, độ phân giải có sẵn	M
+YT-3	Hộp thoại hỏi 🎵 Audio (m4a) hoặc 🎬 Video (mp4); chọn Video thì hỏi độ phân giải tối đa (480p/720p/1080p)	M
+YT-4	Audio: bestaudio → m4a. Video: ưu tiên H.264 (avc1) + AAC ghép mp4 để iOS phát trực tiếp; không có thì fallback rồi chuyển đổi	M
+YT-5	Link playlist: liệt kê, chọn tất cả/từng bài, hỏi định dạng một lần; tùy chọn tạo playlist tương ứng trong app	S
+YT-6	Lưu metadata (title, channel làm artist, thumbnail làm ảnh bìa, source_url)	M
+YT-7	Trạng thái job: chờ → đang tải (%, tốc độ, ETA) → đang xử lý → xong / lỗi (kèm lý do); hủy, thử lại	M
+YT-8	Chạy 1–2 job đồng thời (cấu hình được), còn lại xếp hàng	M
+YT-9	Job lưu DB; sau restart, job dở được đánh dấu lỗi hoặc chạy lại	S
+YT-10	Cập nhật yt-dlp tự động định kỳ hoặc bằng nút trong Cài đặt	S
+YT-11	Hỗ trợ file cookie cho yt-dlp khi bị YouTube chặn	C
+YT-12	Nhận link từ iOS Share Sheet (Shortcut/Web Share Target)	C
+2.4 Thư viện
+ID	Yêu cầu	Ưu tiên
+LIB-1	Danh sách bài: ảnh bìa, tên, ca sĩ, thời lượng, biểu tượng 🎵/🎬	M
+LIB-2	Tìm kiếm (tên/ca sĩ/album), lọc theo loại (tất cả/audio/video), sắp xếp (mới thêm, tên, ca sĩ, thời lượng)	M
+LIB-3	Sửa title/artist/album, đổi ảnh bìa	S
+LIB-4	Xóa bài (xóa cả file và thumbnail), xóa hàng loạt	M
+LIB-5	Hiện dung lượng đã dùng và còn trống	S
+LIB-6	Phân trang/cuộn ảo khi >1000 bài	S
+LIB-7	Yêu thích, nghe gần đây	C
+2.5 Playlist và hàng đợi
+ID	Yêu cầu	Ưu tiên
+PL-1	Tạo, đổi tên, xóa playlist	M
+PL-2	Thêm/bớt bài (nhiều bài cùng lúc), một bài thuộc nhiều playlist	M
+PL-3	Kéo thả đổi thứ tự, hỗ trợ cảm ứng	M
+PL-4	Playlist trộn audio và video	M
+PL-5	Queue: xem, xóa, đổi thứ tự, "Phát tiếp theo", "Thêm vào cuối"	S
+2.6 Player
+ID	Yêu cầu	Ưu tiên
+PLY-1	Chọn thẻ theo media_type: audio → <audio>, video → <video playsinline>	M
+PLY-2	Play/pause, next/prev, thanh seek kéo được, thời gian hiện tại/tổng	M
+PLY-3	Tua nhanh/chậm ±10s (cấu hình 5/10/15/30s)	M
+PLY-4	Tốc độ 0.5x–2x (bước 0.25), giữ cao độ (preservesPitch), nhớ giữa các lần mở	M
+PLY-5	Loop 3 chế độ: tắt / lặp 1 bài / lặp cả playlist	M
+PLY-6	Shuffle, không lặp bài đã phát trong một vòng	M
+PLY-7	Tự chuyển bài khi hết bài	M
+PLY-8	Mini player cố định dưới, bấm mở full player	M
+PLY-9	Nhớ bài, vị trí, queue, cài đặt khi đóng/mở lại (localStorage + đồng bộ server)	M
+PLY-10	Video: khung 16:9, toàn màn hình, Picture-in-Picture, chạm để hiện/ẩn điều khiển	M
+PLY-11	Chỉ một nguồn phát tại một thời điểm (không chồng tiếng khi đổi bài nhanh)	M
+PLY-12	Hẹn giờ tắt (sleep timer)	S
+PLY-13	EQ, crossfade, gapless, lời bài hát/phụ đề	C
+2.7 Nghe khi khóa màn hình
+ID	Yêu cầu	Ưu tiên
+BG-1	Audio tiếp tục phát khi khóa máy hoặc chuyển app khác	M
+BG-2	Media Session metadata (title, artist, album, artwork nhiều kích thước) hiện trên lock screen/Control Center	M
+BG-3	Action handler: play, pause, previoustrack, nexttrack, seekto, seekbackward, seekforward, stop	M
+BG-4	setPositionState để thanh tiến trình lock screen đúng (kể cả khi đổi tốc độ)	M
+BG-5	Audio → audio khi khóa máy phải mượt: dùng lại đúng một thẻ <audio>, chỉ đổi src	M
+BG-6	Audio → video khi máy khóa: dừng và chờ người dùng mở màn hình	M
+BG-7	Video khi thoát app: thử PiP; chấp nhận iOS có thể tạm dừng	S
+BG-8	Lưu vị trí phát mỗi ~5s để khôi phục nếu iOS kill tab	S
+2.8 PWA và giao diện
+ID	Yêu cầu	Ưu tiên
+UI-1	Manifest, icon, display: standalone, hướng dẫn "Thêm vào Màn hình chính"	S
+UI-2	Service worker cache app shell (không cache media lớn ở bản đầu)	S
+UI-3	Mobile-first, nút ≥44px, safe-area (notch, thanh home), dark mode theo hệ thống	M
+UI-4	Trạng thái loading/lỗi/rỗng rõ ở mọi màn hình	M
+UI-5	Cache offline một số bài đã chọn	C
+2.9 Cài đặt
+Đổi mật khẩu, chính sách định dạng lạ (chuyển đổi/từ chối), chất lượng video mặc định, bước tua, số job đồng thời, cập nhật yt-dlp, xem dung lượng.
+
+2.10 Màn hình
+Đăng nhập
+Thư viện (tabs Tất cả/Audio/Video, tìm kiếm, sắp xếp)
+Playlist (danh sách + chi tiết kéo thả)
+Thêm nhạc (tab Upload; tab YouTube: dán link → xem trước → chọn Audio/Video + chất lượng)
+Tác vụ (job tải/chuyển đổi)
+Full player + Queue
+Cài đặt
+3. Ràng buộc kỹ thuật trên iOS
+Vấn đề	Cách xử lý
+Phát nền khi khóa máy	Dùng thẻ <audio> thuần, không phát qua Web Audio API
+Video hay bị dừng khi khóa/thoát app	Chấp nhận giới hạn, dùng PiP; sau này thêm "tách audio"
+Không autoplay	Bài đầu bắt buộc bắt đầu từ thao tác chạm
+Chuyển bài khi khóa máy	Giữ một <audio> duy nhất, đổi src, không tạo mới
+Chuyển audio ↔ video	Thử 2 phương án ở Phase 0: hai thẻ riêng, hoặc một <video> dùng chung; chọn cách ổn định hơn
+Seek không hoạt động	Server phải hỗ trợ HTTP Range (206), Accept-Ranges: bytes, Content-Length đúng
+Định dạng	Chuẩn hóa về m4a (audio) và mp4 H.264+AAC + faststart (video)
+MIME type	Trả đúng audio/mp4, audio/mpeg, video/mp4…
+Lock screen	Chỉ hiện nút đã đăng ký action handler
+Tab bị kill nền	Lưu vị trí định kỳ
+HTTPS	Cần cho PWA/service worker (Tailscale, Cloudflare Tunnel hoặc reverse proxy)
+Hành vi nền của iOS thay đổi theo phiên bản và khác giữa Safari thường với PWA standalone, nên Phase 0 phải test trên iPhone thật.
+
+4. Yêu cầu phi chức năng
+Bảo mật: chạy yt-dlp/ffmpeg bằng spawn với mảng tham số (không ghép chuỗi shell); whitelist domain và chặn SSRF; lưu file theo UUID, chống path traversal; giới hạn loại/kích thước upload và kiểm tra bằng ffprobe; cookie Secure/HttpOnly/SameSite; helmet + rate limit; stream file phải qua kiểm tra đăng nhập.
+
+Hiệu năng: stream trực tiếp từ đĩa bằng fs.createReadStream với range, không load cả file vào RAM; bắt đầu phát <2s trên LAN, seek <1s; thumbnail nhiều kích thước có cache header; ffmpeg/yt-dlp chạy ngoài luồng chính, máy yếu giới hạn 1 job nặng/lần.
+
+Độ tin cậy: job lưu DB, khôi phục sau restart; dọn file dở dang; log có cấu trúc (pino), xoay vòng; sao lưu bằng cách copy thư mục data/ (media + SQLite).
+
+Bảo trì: cấu hình qua .env (cổng, đường dẫn data, giới hạn, mật khẩu); có Dockerfile/docker-compose gói Node + ffmpeg + yt-dlp; có hướng dẫn cài đặt và cập nhật yt-dlp.
+
+Tương thích: iOS Safari 16+ (chính), Chrome/Safari desktop, Android Chrome (best-effort).
+
+5. Kiến trúc và công nghệ
+Thành phần	Lựa chọn
+Server	Node.js 20+ LTS, Express/Fastify
+Database	SQLite (better-sqlite3)
+Lưu file	/data/media, /data/thumbs, /data/tmp (trừu tượng hóa để sau đổi S3/R2)
+Upload	busboy/multer, stream thẳng xuống đĩa
+Metadata	music-metadata, ffprobe
+Tải YouTube	yt-dlp (binary) + ffmpeg qua child_process.spawn
+Hàng đợi	p-queue + bảng jobs
+Tiến trình realtime	SSE hoặc polling 1–2s
+Frontend	Vanilla JS/Svelte + Vite (vite-plugin-pwa)
+Kéo thả	SortableJS (hỗ trợ touch)
+Triển khai	Docker (hoặc chạy thẳng node) + Tailscale/Cloudflare Tunnel
+Luồng dữ liệu
+
+Upload: client → ghi file tạm → ffprobe phân loại → (nếu cần) job chuyển đổi → metadata + thumbnail → ghi DB.
+YouTube: dán link → /youtube/info → chọn Audio/Video + chất lượng → tạo job → yt-dlp → xử lý → ghi DB.
+Phát: client gọi /tracks/:id/stream (Range) → server trả 206.
+6. Mô hình dữ liệu (không có user_id)
+tracks: id, title, artist, album, duration_sec, media_type (audio|video), mime, file_path, file_size, thumbnail_path, width, height, source (upload|youtube), source_url, original_ext, created_at, last_played_at
+playlists: id, name, created_at, updated_at
+playlist_tracks: playlist_id, track_id, position
+jobs: id, kind (youtube|convert), url, media_type, quality, status (queued|downloading|processing|done|error|canceled), progress, speed, eta, error, track_id, created_at, updated_at
+player_state (1 dòng): track_id, position_sec, queue (JSON), loop_mode, shuffle, rate, updated_at
+settings: key/value (chính sách định dạng lạ, chất lượng mặc định, bước tua, số job…)
+7. API
+Method	Endpoint	Mục đích
+POST	/api/auth/login, /logout	Đăng nhập/đăng xuất
+GET	/api/tracks?type=&q=&sort=&page=	Danh sách bài
+POST	/api/tracks/upload	Upload nhiều file
+PATCH / DELETE	/api/tracks/:id	Sửa / xóa
+GET	/api/tracks/:id/stream	Stream có Range 206
+GET	/api/tracks/:id/thumb?size=	Ảnh bìa/thumbnail
+POST	/api/youtube/info	Lấy thông tin từ link
+POST	/api/youtube/download	Tạo job (url, type, quality, items[])
+GET	/api/jobs, /api/jobs/stream (SSE)	Danh sách và tiến trình
+POST	/api/jobs/:id/cancel, /retry	Hủy / thử lại
+CRUD	/api/playlists, /api/playlists/:id/tracks, /reorder	Playlist
+GET / PUT	/api/player-state	Đồng bộ trạng thái player
+GET / PUT	/api/settings	Cài đặt
+GET	/api/system/storage	Dung lượng đĩa
+POST	/api/system/update-ytdlp	Cập nhật yt-dlp
+8. Lệnh tham khảo
+Audio YouTube: -f "bestaudio[ext=m4a]/bestaudio" -x --audio-format m4a --embed-thumbnail --add-metadata
+Video YouTube (≤720p): -f "bv*[vcodec^=avc1][height<=720]+ba[ext=m4a]/b[ext=mp4][height<=720]" --merge-output-format mp4
+Chuyển video: ffmpeg -i in -c:v libx264 -c:a aac -movflags +faststart out.mp4
+Chuyển audio: ffmpeg -i in -c:a aac -b:a 192k out.m4a
+YouTube đổi thường xuyên (có thể cần thêm JS runtime cho yt-dlp), hãy đối chiếu tài liệu yt-dlp hiện hành khi cài.
+
+9. Rủi ro
+Rủi ro	Giảm thiểu
+iOS đổi hành vi phát nền	Phase 0 test máy thật, ghi lại cấu hình chạy ổn
+Video bị dừng khi khóa màn hình	PiP, nêu rõ giới hạn, sau này thêm tách audio
+YouTube chặn IP/đổi giao diện	Host ở nhà (VPS dễ bị chặn), cập nhật yt-dlp, hỗ trợ cookie
+ffmpeg quá tải máy yếu	Giới hạn 1 job nặng, hạ preset
+Đầy đĩa	Hiển thị dung lượng, chặn upload/tải khi còn ít
+Bản quyền/điều khoản YouTube	Chỉ dùng cá nhân, với nội dung bạn có quyền lưu
+10. Lộ trình và nghiệm thu
+Phase 0: Prototype (làm đầu tiên) Trang tĩnh phát 1 m4a và 1 mp4 từ Node server có Range. ✅ Trên iPhone thật: khóa màn hình vẫn nghe; lock screen hiện tên bài và nút; seek chạy; audio→audio khi khóa máy; thử audio→video; thử PiP.
+
+Phase 1: MVP Đăng nhập, upload (tự phân loại, chuyển đổi định dạng lạ), thư viện, player đầy đủ (loop, seek, ±10s, tốc độ, shuffle), playlist kéo thả, nhớ trạng thái. ✅ Upload 20 file lẫn audio/video, tạo playlist, nghe liên tục 1 giờ khi khóa màn hình, không mất tiến trình.
+
+Phase 2: YouTube Dán link → chọn Audio/Video + chất lượng, hàng đợi job có tiến trình, playlist YouTube, hủy/thử lại, cập nhật yt-dlp. ✅ Tải 1 audio, 1 video 720p, 1 playlist 10 bài; tất cả phát được trên iPhone.
+
+Phase 3: Hoàn thiện PWA đầy đủ, queue nâng cao, sleep timer, Docker, sao lưu, tách audio từ video (nghe nền cho video), cache offline.
+
+11. Ngoài phạm vi (bản đầu)
+Nhiều user, chia sẻ công khai, mạng xã hội, gợi ý nhạc, lời bài hát đồng bộ, DRM, app native/App Store, live stream.
+
+12. Cấu trúc thư mục gợi ý
+/server   routes, services (ytdlp, ffmpeg, jobs), db, middleware
+/web      giao diện (Vite), player, service worker
+/data     media, thumbs, tmp, app.db
+Dockerfile, docker-compose.yml, .env.example

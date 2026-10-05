@@ -1,0 +1,438 @@
+import crypto from 'crypto';
+import path from 'path';
+import fs from 'fs';
+import { db, getSetting } from '../db.js';
+import { config } from '../config.js';
+import { downloadYouTube } from './ytdlp.js';
+import { probeMedia, convertAudioToM4A, convertVideoToMP4, generateVideoThumbnail } from './ffmpeg.js';
+import { extractMetadata } from './metadata.js';
+import { getLyrics } from './lyrics.js';
+
+// Active AbortControllers: jobId -> AbortController
+const abortControllers = new Map();
+
+// SSE listeners
+const sseClients = new Set();
+
+// Send keep-alive heartbeat ping every 25 seconds for mobile devices & reverse proxies (Nginx/Cloudflare)
+setInterval(() => {
+  if (sseClients.size === 0) return;
+  for (const client of sseClients) {
+    try {
+      client.write(': ping\n\n');
+    } catch {
+      sseClients.delete(client);
+    }
+  }
+}, 25000);
+
+export function registerSSEClient(res) {
+  sseClients.add(res);
+  res.on('close', () => {
+    sseClients.delete(res);
+  });
+}
+
+export function broadcastJobUpdate(job) {
+  if (sseClients.size === 0) return;
+  const payload = `data: ${JSON.stringify(job)}\n\n`;
+  for (const client of sseClients) {
+    try {
+      client.write(payload);
+    } catch (err) {
+      // Handled on close
+    }
+  }
+}
+
+class JobQueue {
+  constructor() {
+    this.runningCount = 0;
+  }
+
+  getMaxConcurrency() {
+    const setting = parseInt(getSetting('max_concurrent_jobs', '2'), 10);
+    return Math.max(1, Math.min(setting || 2, 4));
+  }
+
+  getJob(id) {
+    return db.prepare('SELECT * FROM jobs WHERE id = ?').get(id);
+  }
+
+  getAllJobs(limit = 50) {
+    return db.prepare('SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?').all(limit);
+  }
+
+  getUserJobs(userId, limit = 50) {
+    if (!userId) return this.getAllJobs(limit);
+    return db.prepare('SELECT * FROM jobs WHERE user_id = ? ORDER BY created_at DESC LIMIT ?').all(userId, limit);
+  }
+
+  createJob({ kind, url, mediaType = 'audio', quality = '720p', trackId = null, userId = 'default', extra = {} }) {
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const extraStr = typeof extra === 'object' ? JSON.stringify(extra) : (extra || '{}');
+
+    db.prepare(`
+      INSERT INTO jobs (id, user_id, kind, url, media_type, quality, status, progress, speed, eta, error, track_id, extra, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'queued', 0, '', '', NULL, ?, ?, ?, ?)
+    `).run(id, userId, kind, url || '', mediaType, quality, trackId, extraStr, now, now);
+
+    const job = this.getJob(id);
+    broadcastJobUpdate(job);
+    this.processNext();
+    return job;
+  }
+
+  cancelJob(id) {
+    const job = this.getJob(id);
+    if (!job) return { success: false, error: 'Job not found' };
+
+    if (abortControllers.has(id)) {
+      abortControllers.get(id).abort();
+      abortControllers.delete(id);
+    }
+
+    db.prepare(`
+      UPDATE jobs 
+      SET status = 'canceled', error = 'Canceled by user', updated_at = datetime('now')
+      WHERE id = ?
+    `).run(id);
+
+    const updated = this.getJob(id);
+    broadcastJobUpdate(updated);
+    this.processNext();
+    return { success: true, job: updated };
+  }
+
+  retryJob(id) {
+    const job = this.getJob(id);
+    if (!job) return { success: false, error: 'Job not found' };
+
+    db.prepare(`
+      UPDATE jobs 
+      SET status = 'queued', progress = 0, speed = '', eta = '', error = NULL, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(id);
+
+    const updated = this.getJob(id);
+    broadcastJobUpdate(updated);
+    this.processNext();
+    return { success: true, job: updated };
+  }
+
+  updateProgress(id, { progress, speed = '', eta = '', status = 'downloading' }) {
+    db.prepare(`
+      UPDATE jobs 
+      SET status = ?, progress = ?, speed = ?, eta = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(status, progress, speed, eta, id);
+
+    broadcastJobUpdate(this.getJob(id));
+  }
+
+  markProcessing(id) {
+    db.prepare(`
+      UPDATE jobs 
+      SET status = 'processing', progress = 99, speed = '', eta = '', updated_at = datetime('now')
+      WHERE id = ?
+    `).run(id);
+
+    broadcastJobUpdate(this.getJob(id));
+  }
+
+  markDone(id, trackId = null) {
+    db.prepare(`
+      UPDATE jobs 
+      SET status = 'done', progress = 100, speed = '', eta = '', error = NULL, track_id = COALESCE(?, track_id), updated_at = datetime('now')
+      WHERE id = ?
+    `).run(trackId, id);
+
+    broadcastJobUpdate(this.getJob(id));
+    this.runningCount--;
+    this.processNext();
+  }
+
+  markError(id, errorMsg) {
+    db.prepare(`
+      UPDATE jobs 
+      SET status = 'error', error = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(errorMsg, id);
+
+    broadcastJobUpdate(this.getJob(id));
+    this.runningCount--;
+    this.processNext();
+  }
+
+  async processNext() {
+    if (this.runningCount >= this.getMaxConcurrency()) {
+      return;
+    }
+
+    const nextJob = db.prepare(`
+      SELECT * FROM jobs 
+      WHERE status = 'queued' 
+      ORDER BY created_at ASC 
+      LIMIT 1
+    `).get();
+
+    if (!nextJob) return;
+
+    this.runningCount++;
+    const abortController = new AbortController();
+    abortControllers.set(nextJob.id, abortController);
+
+    try {
+      if (nextJob.kind === 'youtube') {
+        await this.runYouTubeJob(nextJob, abortController.signal);
+      } else if (nextJob.kind === 'convert') {
+        await this.runConvertJob(nextJob, abortController.signal);
+      }
+    } catch (err) {
+      this.markError(nextJob.id, err.message);
+    } finally {
+      abortControllers.delete(nextJob.id);
+    }
+  }
+
+  async runYouTubeJob(job, abortSignal) {
+    this.updateProgress(job.id, { progress: 0, status: 'downloading' });
+
+    const trackId = crypto.randomUUID();
+    const isAudio = job.media_type === 'audio';
+    const ext = isAudio ? '.m4a' : '.mp4';
+    const filename = `${trackId}${ext}`;
+    const targetFilePath = path.join(config.MEDIA_DIR, filename);
+
+    // yt-dlp download template
+    const templatePath = path.join(config.MEDIA_DIR, `${trackId}.%(ext)s`);
+
+    await downloadYouTube({
+      url: job.url,
+      mediaType: job.media_type,
+      quality: job.quality || '720p',
+      outputPath: templatePath,
+      onProgress: p => {
+        this.updateProgress(job.id, {
+          progress: p.progress || 0,
+          speed: p.speed || '',
+          eta: p.eta || '',
+          status: 'downloading'
+        });
+      },
+      abortSignal
+    });
+
+    this.markProcessing(job.id);
+
+    // Find actual generated file (yt-dlp may output .m4a or .mp4)
+    let actualFile = targetFilePath;
+    if (!fs.existsSync(actualFile)) {
+      const candidates = fs.readdirSync(config.MEDIA_DIR).filter(f => f.startsWith(trackId));
+      if (candidates.length > 0) {
+        actualFile = path.join(config.MEDIA_DIR, candidates[0]);
+      } else {
+        throw new Error('Downloaded file not found on disk');
+      }
+    }
+
+    const probe = await probeMedia(actualFile);
+    const meta = await extractMetadata(actualFile);
+
+    const stats = fs.statSync(actualFile);
+    const mime = isAudio ? 'audio/mp4' : 'video/mp4';
+    let thumbFilename = meta.thumbnailFile;
+
+    // Parse extra metadata if provided
+    let extra = {};
+    try {
+      extra = typeof job.extra === 'string' ? JSON.parse(job.extra || '{}') : (job.extra || {});
+    } catch { }
+
+    const ytidMatch = (job.url || '').match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
+    const youtubeId = ytidMatch ? ytidMatch[1] : (extra.youtubeId || extra.youtube_id || '');
+
+    // Download thumbnail for audio/video if not embedded
+    if (!thumbFilename) {
+      const candidateUrls = [];
+      if (extra.thumbnail) candidateUrls.push(extra.thumbnail);
+      if (extra.thumbnail_url) candidateUrls.push(extra.thumbnail_url);
+      if (youtubeId) {
+        candidateUrls.push(`https://i.ytimg.com/vi/${youtubeId}/maxresdefault.jpg`);
+        candidateUrls.push(`https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`);
+        candidateUrls.push(`https://i.ytimg.com/vi/${youtubeId}/mqdefault.jpg`);
+      }
+
+      for (const tUrl of candidateUrls) {
+        try {
+          const tRes = await fetch(tUrl, { signal: AbortSignal.timeout(5000) });
+          if (tRes.ok) {
+            const buf = Buffer.from(await tRes.arrayBuffer());
+            if (buf && buf.length > 500) {
+              const tName = `thumb_${trackId}.jpg`;
+              const tPath = path.join(config.THUMBS_DIR, tName);
+              fs.writeFileSync(tPath, buf);
+              thumbFilename = tName;
+              break;
+            }
+          }
+        } catch {
+          // try next URL
+        }
+      }
+    }
+
+    // If video and still no thumbnail, generate one with ffmpeg
+    if (!isAudio && !thumbFilename) {
+      const vThumbName = `thumb_${trackId}.jpg`;
+      const vThumbPath = path.join(config.THUMBS_DIR, vThumbName);
+      try {
+        await generateVideoThumbnail(actualFile, vThumbPath, probe.durationSec || 10);
+        thumbFilename = vThumbName;
+      } catch (thumbErr) {
+        console.warn(`Video thumbnail generation notice: ${thumbErr.message}`);
+      }
+    }
+
+    const finalTitle = (extra.title && extra.title !== 'YouTube Audio/Video') ? extra.title : (meta.title || 'YouTube Audio');
+    const finalArtist = (extra.artist && extra.artist !== 'YouTube') ? extra.artist : (meta.artist || 'YouTube');
+
+    // Insert into tracks table
+    db.prepare(`
+      INSERT INTO tracks (
+        id, user_id, title, artist, album, duration_sec, media_type, mime, file_path, file_size, 
+        thumbnail_path, width, height, source, source_url, original_ext, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'youtube', ?, ?, datetime('now'))
+    `).run(
+      trackId,
+      job.user_id || 'default',
+      finalTitle,
+      finalArtist,
+      meta.album || '',
+      probe.durationSec || meta.durationSec || 0,
+      job.media_type,
+      mime,
+      path.basename(actualFile),
+      stats.size,
+      thumbFilename,
+      probe.width || null,
+      probe.height || null,
+      job.url,
+      path.extname(actualFile)
+    );
+
+    if (extra && extra.playlistId) {
+      try {
+        const maxPosRow = db.prepare('SELECT MAX(position) as maxPos FROM playlist_tracks WHERE playlist_id = ?').get(extra.playlistId);
+        const nextPos = (maxPosRow && maxPosRow.maxPos != null) ? maxPosRow.maxPos + 1 : 0;
+        db.prepare(`
+          INSERT OR IGNORE INTO playlist_tracks (playlist_id, track_id, position)
+          VALUES (?, ?, ?)
+        `).run(extra.playlistId, trackId, nextPos);
+        db.prepare("UPDATE playlists SET updated_at = datetime('now') WHERE id = ?").run(extra.playlistId);
+      } catch (plErr) {
+        console.warn('[Queue] Failed to add track to playlist:', plErr.message);
+      }
+    }
+
+    // Automatically fetch and persist lyrics for offline use
+    try {
+      const lyricsResult = await getLyrics({
+        trackId: trackId,
+        youtubeId: youtubeId,
+        title: finalTitle,
+        artist: finalArtist,
+        duration: probe.durationSec || meta.durationSec || 0
+      });
+      if (lyricsResult && (lyricsResult.syncedLyrics || lyricsResult.plainLyrics)) {
+        const lrcFile = path.join(config.MEDIA_DIR, `${trackId}.lrc`);
+        fs.writeFileSync(lrcFile, lyricsResult.syncedLyrics || lyricsResult.plainLyrics, 'utf8');
+      }
+    } catch (lErr) {
+      console.warn(`[Queue] Auto-lyrics notice for ${trackId}:`, lErr.message);
+    }
+
+    this.markDone(job.id, trackId);
+  }
+
+  async runConvertJob(job, abortSignal) {
+    this.updateProgress(job.id, { progress: 0, status: 'processing' });
+
+    const track = db.prepare('SELECT * FROM tracks WHERE id = ?').get(job.track_id);
+    if (!track) {
+      throw new Error(`Track ${job.track_id} not found for conversion`);
+    }
+
+    const currentFilePath = path.join(config.MEDIA_DIR, track.file_path);
+    if (!fs.existsSync(currentFilePath)) {
+      throw new Error(`Original file not found: ${track.file_path}`);
+    }
+
+    const isAudio = track.media_type === 'audio';
+    const newExt = isAudio ? '.m4a' : '.mp4';
+    const newFilename = `${track.id}${newExt}`;
+    const newFilePath = path.join(config.MEDIA_DIR, newFilename);
+
+    if (isAudio) {
+      await convertAudioToM4A(currentFilePath, newFilePath, p => {
+        if (track.duration_sec > 0 && p.currentSec) {
+          const pct = Math.min(99, Math.round((p.currentSec / track.duration_sec) * 100));
+          this.updateProgress(job.id, { progress: pct, status: 'processing' });
+        }
+      }, abortSignal);
+    } else {
+      await convertVideoToMP4(currentFilePath, newFilePath, track.duration_sec || 0, p => {
+        this.updateProgress(job.id, { progress: p.percent || 50, status: 'processing' });
+      }, abortSignal);
+    }
+
+    // Probe converted media
+    const probe = await probeMedia(newFilePath);
+    const newStats = fs.statSync(newFilePath);
+    const newMime = isAudio ? 'audio/mp4' : 'video/mp4';
+
+    // Remove old incompatible file if name changed
+    if (newFilename !== track.file_path && fs.existsSync(currentFilePath)) {
+      try {
+        fs.unlinkSync(currentFilePath);
+      } catch (e) {
+        console.warn('Could not delete old file', e);
+      }
+    }
+
+    // Video thumbnail if missing
+    let thumbFilename = track.thumbnail_path;
+    if (!isAudio && (!thumbFilename || !fs.existsSync(path.join(config.THUMBS_DIR, thumbFilename)))) {
+      const vThumbName = `thumb_${track.id}.jpg`;
+      const vThumbPath = path.join(config.THUMBS_DIR, vThumbName);
+      try {
+        await generateVideoThumbnail(newFilePath, vThumbPath, probe.durationSec || 10);
+        thumbFilename = vThumbName;
+      } catch (err) {
+        console.warn('Thumbnail generation failed after transcode', err);
+      }
+    }
+
+    // Update track
+    db.prepare(`
+      UPDATE tracks 
+      SET file_path = ?, mime = ?, file_size = ?, duration_sec = ?, 
+          thumbnail_path = ?, width = ?, height = ?
+      WHERE id = ?
+    `).run(
+      newFilename,
+      newMime,
+      newStats.size,
+      probe.durationSec || track.duration_sec,
+      thumbFilename,
+      probe.width || null,
+      probe.height || null,
+      track.id
+    );
+
+    this.markDone(job.id, track.id);
+  }
+}
+
+export const queue = new JobQueue();

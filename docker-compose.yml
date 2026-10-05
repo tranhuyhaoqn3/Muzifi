@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: mp3-streamer
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - HOST=0.0.0.0
+      - APP_PASSWORD=admin123
+      - SESSION_SECRET=super_secret_music_key_90days_persistence
+      - DISABLE_AUTH=false
+      - DATA_DIR=/app/data
+    volumes:
+      - ./data:/app/data

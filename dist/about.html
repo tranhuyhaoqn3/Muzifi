@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Giới thiệu - Muzifi</title>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800;900&display=swap');
+    
+    :root {
+      --bg: #07090e;
+      --card-bg: rgba(255, 255, 255, 0.035);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --card-hover: rgba(255, 255, 255, 0.06);
+      --primary: #3b82f6;
+      --primary-gradient: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+      --accent: #8b5cf6;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+      line-height: 1.6;
+      position: relative;
+    }
+
+    /* Ambient background lights */
+    .glow {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(120px);
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.45;
+    }
+    .glow-1 {
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, #3b82f6 0%, transparent 70%);
+      top: -150px; left: -100px;
+    }
+    .glow-2 {
+      width: 450px; height: 450px;
+      background: radial-gradient(circle, #8b5cf6 0%, transparent 70%);
+      bottom: 50px; right: -100px;
+    }
+    .glow-3 {
+      width: 350px; height: 350px;
+      background: radial-gradient(circle, #06b6d4 0%, transparent 70%);
+      top: 40%; left: 50%;
+      transform: translate(-50%, -50%);
+      opacity: 0.2;
+    }
+
+    .container {
+      position: relative;
+      z-index: 1;
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+
+    /* Top Nav */
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 48px;
+    }
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--card-border);
+      border-radius: 9999px;
+      color: var(--text);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 600;
+      transition: all 0.2s ease;
+    }
+    .back-btn:hover {
+      background: rgba(59, 130, 246, 0.15);
+      border-color: rgba(59, 130, 246, 0.4);
+      transform: translateX(-3px);
+    }
+
+    .brand-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .brand-badge img {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      object-fit: cover;
+    }
+    .brand-badge span {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.35rem;
+      font-weight: 800;
+      background: var(--primary-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: -0.02em;
+    }
+
+    /* Hero section */
+    .hero {
+      text-align: center;
+      padding: 30px 0 50px;
+    }
+    .tagline-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 16px;
+      border-radius: 9999px;
+      background: rgba(59, 130, 246, 0.12);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      color: #93c5fd;
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+    .hero h1 {
+      font-family: 'Outfit', sans-serif;
+      font-size: clamp(2.4rem, 6vw, 3.8rem);
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: 18px;
+      background: linear-gradient(135deg, #ffffff 20%, #bfdbfe 60%, #c084fc 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero p {
+      font-size: clamp(1rem, 2.2vw, 1.2rem);
+      color: var(--text-muted);
+      max-width: 640px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+
+    /* Feature Grid */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-bottom: 50px;
+    }
+    .card {
+      background: var(--card-bg);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 28px 24px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 2px;
+      background: var(--primary-gradient);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    .card:hover {
+      background: var(--card-hover);
+      border-color: rgba(255, 255, 255, 0.16);
+      transform: translateY(-4px);
+    }
+    .card:hover::before {
+      opacity: 1;
+    }
+    .card-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      background: rgba(59, 130, 246, 0.12);
+      border: 1px solid rgba(59, 130, 246, 0.25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+      margin-bottom: 18px;
+      color: #60a5fa;
+    }
+    .card h3 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: #fff;
+    }
+    .card p {
+      font-size: 0.92rem;
+      color: var(--text-muted);
+      line-height: 1.55;
+    }
+
+    /* Developer Section */
+    .developer-section {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 24px;
+      padding: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      flex-wrap: wrap;
+      margin-bottom: 40px;
+    }
+    .dev-info {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+    .dev-avatar {
+      width: 64px;
+      height: 64px;
+      border-radius: 20px;
+      background: var(--primary-gradient);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.8rem;
+      font-weight: 800;
+      color: #fff;
+      box-shadow: 0 8px 24px rgba(59, 130, 246, 0.3);
+    }
+    .dev-meta h4 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #fff;
+    }
+    .dev-meta p {
+      font-size: 0.88rem;
+      color: var(--text-muted);
+    }
+    .dev-meta p span {
+      color: #60a5fa;
+      font-weight: 600;
+    }
+    .skills-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .skill-pill {
+      padding: 6px 14px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--card-border);
+      border-radius: 9999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #cbd5e1;
+    }
+
+    /* Footer links */
+    .footer-links {
+      text-align: center;
+      padding-top: 24px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+    .footer-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.88rem;
+      transition: color 0.15s ease;
+    }
+    .footer-links a:hover {
+      color: #fff;
+    }
+    .copyright {
+      width: 100%;
+      font-size: 0.8rem;
+      color: rgba(148, 163, 184, 0.5);
+      margin-top: 8px;
+    }
+
+    @media (max-width: 640px) {
+      .container { padding: 24px 16px 60px; }
+      .developer-section { flex-direction: column; align-items: flex-start; }
+      .skills-row { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="glow glow-1"></div>
+  <div class="glow glow-2"></div>
+  <div class="glow glow-3"></div>
+
+  <div class="container">
+    <header class="top-bar">
+      <a href="/" class="back-btn">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        Quay lại App
+      </a>
+      <div class="brand-badge">
+        <img src="/logo.png" alt="Muzifi Logo">
+        <span>muzifi</span>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div class="tagline-badge">Âm Nhạc Mọi Lúc, Mọi Nơi</div>
+      <h1>Muzifi Music</h1>
+      <p>Ứng dụng nghe nhạc & phát video cá nhân tối ưu cho PWA & iOS. Nghe nhạc offline chất lượng cao, lưu trữ trọn vẹn và phát nhạc nền liên tục không gián đoạn.</p>
+    </section>
+
+    <div class="grid">
+      <div class="card">
+        <div class="card-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg></div>
+        <h3>Tải Nhạc Cực Nhanh</h3>
+        <p>Hỗ trợ tải nhạc & video trực tiếp từ YouTube hoặc upload file cá nhân với bộ xử lý âm thanh chất lượng cao.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path><path d="M10.71 5.05A16 16 0 0 1 22.58 9"></path><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg></div>
+        <h3>Nghe Nhạc Offline</h3>
+        <p>Kho nhạc lưu trữ trực tiếp trong bộ nhớ thiết bị. Phát nhạc mượt mà ngay cả khi không có mạng Internet.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg></div>
+        <h3>Tối Ưu Hoá iOS & PWA</h3>
+        <p>Hỗ trợ phát nhạc nền khi khoá màn hình điện thoại, điều khiển qua Control Center và tai nghe Bluetooth.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg></div>
+        <h3>Lời Bài Hát Đồng Bộ</h3>
+        <p>Tự động tìm kiếm và đồng bộ lyrics karaoke từng câu chữ theo thời gian thực chuẩn xác.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg></div>
+        <h3>Quản Lý Danh Sách Phát</h3>
+        <p>Tạo và sắp xếp playlist thông minh, kéo thả đổi thứ tự bài hát linh hoạt theo phong cách của bạn.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
+        <h3>Bảo Mật & Riêng Tư</h3>
+        <p>Dữ liệu được lưu trữ riêng biệt trên máy chủ cá nhân của bạn, không thu thập thông tin người dùng.</p>
+      </div>
+    </div>
+
+    <section class="developer-section">
+      <div class="dev-info">
+        <div class="dev-avatar">H</div>
+        <div class="dev-meta">
+          <h4>Hao</h4>
+          <p>Full-stack developer &middot; Creator of <span>Muzifi</span></p>
+        </div>
+      </div>
+      <div class="skills-row">
+        <span class="skill-pill">Node.js</span>
+        <span class="skill-pill">Vanilla JS</span>
+        <span class="skill-pill">PWA</span>
+        <span class="skill-pill">SQLite</span>
+        <span class="skill-pill">FFmpeg</span>
+      </div>
+    </section>
+
+    <footer class="footer-links">
+      <a href="/privacy.html">Chính sách bảo mật</a>
+      <a href="/terms.html">Điều khoản sử dụng</a>
+      <a href="/">Trang chủ</a>
+      <div class="copyright">&copy; 2026 Muzifi. All rights reserved.</div>
+    </footer>
+  </div>
+</body>
+</html>
