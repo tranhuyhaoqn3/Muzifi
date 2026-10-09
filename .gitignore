@@ -23,3 +23,13 @@ yarn-error.log*
 # OS files
 .DS_Store
 Thumbs.db
+
+# iOS build artifacts
+build/
+Payload/
+*.ipa
+ios-app/node_modules/
+ios-app/ios/App/Pods/
+ios-app/ios/App/build/
+ios-app/ios/App/DerivedData/
+ios-app/ios/App/.build/

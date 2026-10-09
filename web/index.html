@@ -59,7 +59,22 @@
       display: inline-block;
       line-height: 1;
     }
+    html.shared-guest-view body header,
+    html.shared-guest-view body .bottom-nav,
+    html.shared-guest-view body #mini-player {
+      display: none !important;
+    }
   </style>
+  <script>
+    (function() {
+      try {
+        var p = new URLSearchParams(window.location.search);
+        if (p.has('v') || p.has('yt') || p.has('track') || p.has('play')) {
+          document.documentElement.classList.add('shared-guest-view');
+        }
+      } catch(e) {}
+    })();
+  </script>
 </head>
 <body>
   <div id="app">
@@ -193,6 +208,15 @@
         </button>
         <div class="player-header-title">Đang phát</div>
         <div style="display:flex;gap:8px;align-items:center;">
+          <button id="btn-player-share" class="icon-btn" title="Chia sẻ bài hát" style="width:36px;height:36px;color:var(--text-primary);">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="18" cy="5" r="3" />
+              <circle cx="6" cy="12" r="3" />
+              <circle cx="18" cy="19" r="3" />
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+            </svg>
+          </button>
           <button id="btn-player-download" class="icon-btn" title="Tải bài đang phát về máy" style="display:none;width:36px;height:36px;color:var(--text-primary);">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />

@@ -4,6 +4,18 @@ export function setUnauthorizedHandler(fn) {
   onUnauthorizedCallback = fn;
 }
 
+export function getApiBaseUrl() {
+  return localStorage.getItem('muzifi_server_url') || '';
+}
+
+export function setApiBaseUrl(url) {
+  if (url) {
+    localStorage.setItem('muzifi_server_url', url.trim().replace(/\/+$/, ''));
+  } else {
+    localStorage.removeItem('muzifi_server_url');
+  }
+}
+
 async function request(url, options = {}) {
   options.credentials = 'include';
   if (!options.headers) {
@@ -21,10 +33,12 @@ async function request(url, options = {}) {
     options.body = JSON.stringify(options.body);
   }
 
-  const res = await fetch(url, options);
+  const apiBase = getApiBaseUrl();
+  const finalUrl = (url.startsWith('/') && apiBase) ? `${apiBase}${url}` : url;
+  const res = await fetch(finalUrl, options);
 
   if (res.status === 401) {
-    if (onUnauthorizedCallback) {
+    if (onUnauthorizedCallback && !window.__muzifi_guest_mode) {
       onUnauthorizedCallback();
     }
     const err = await res.json().catch(() => ({ error: 'Unauthorized' }));
@@ -99,7 +113,9 @@ export const api = {
         xhr.onerror = () => reject(new Error('Network error during upload'));
         xhr.send(formData);
       });
-    }
+    },
+    enrich: () => request('/api/tracks/enrich', { method: 'POST' }),
+    enrichSingle: (id) => request(`/api/tracks/${id}/enrich`, { method: 'POST' }),
   },
   get: (url) => request(url),
   youtube: {

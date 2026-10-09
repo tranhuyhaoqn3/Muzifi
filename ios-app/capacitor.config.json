@@ -1,0 +1,16 @@
+{
+  "appId": "com.tranhuyhao.muzifi",
+  "appName": "Muzifi",
+  "webDir": "www",
+  "bundledWebRuntime": false,
+  "ios": {
+    "contentInset": "always",
+    "allowsLinkPreview": false,
+    "scrollEnabled": false
+  },
+  "server": {
+    "cleartext": true,
+    "androidScheme": "https",
+    "iosScheme": "https"
+  }
+}

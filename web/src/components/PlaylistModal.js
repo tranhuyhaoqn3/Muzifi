@@ -1,6 +1,7 @@
 import { api } from '../api.js';
 import { store } from '../state.js';
 import { icons } from './icons.js';
+import { getAllOfflineTracks } from '../offlineStorage.js';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -92,6 +93,19 @@ export async function showAddToPlaylistModal({ trackIds = [], trackTitle = '', o
       closeModal();
       if (onSuccess) onSuccess({ id: playlistId, name: playlistName });
     } catch (err) {
+      const list = JSON.parse(localStorage.getItem('muzifi_local_playlists') || '[]');
+      const targetPl = list.find(p => p.id === playlistId);
+      if (targetPl) {
+        if (!targetPl.track_ids) targetPl.track_ids = [];
+        trackIds.forEach(id => {
+          if (!targetPl.track_ids.includes(id)) targetPl.track_ids.push(id);
+        });
+        targetPl.track_count = targetPl.track_ids.length;
+        localStorage.setItem('muzifi_local_playlists', JSON.stringify(list));
+        closeModal();
+        if (onSuccess) onSuccess({ id: playlistId, name: playlistName });
+        return;
+      }
       alert('Lỗi thêm vào playlist: ' + err.message);
     }
   };
@@ -112,9 +126,19 @@ export async function showAddToPlaylistModal({ trackIds = [], trackTitle = '', o
       closeModal();
       if (onSuccess) onSuccess(newPl);
     } catch (err) {
-      alert('Lỗi tạo playlist: ' + err.message);
-      createBtn.disabled = false;
-      createBtn.innerHTML = `${icons.plus} Tạo & Thêm`;
+      const localPl = {
+        id: `local_pl_${Date.now()}`,
+        name: name,
+        track_count: trackIds.length,
+        tracks: [],
+        track_ids: [...trackIds],
+        updated_at: new Date().toISOString()
+      };
+      const list = JSON.parse(localStorage.getItem('muzifi_local_playlists') || '[]');
+      list.unshift(localPl);
+      localStorage.setItem('muzifi_local_playlists', JSON.stringify(list));
+      closeModal();
+      if (onSuccess) onSuccess(localPl);
     }
   };
 
@@ -127,9 +151,17 @@ export async function showAddToPlaylistModal({ trackIds = [], trackTitle = '', o
   });
 
   // Fetch playlists
+  let playlists = [];
   try {
-    const playlists = await api.playlists.list();
-    store.set({ playlists });
+    playlists = await api.playlists.list();
+  } catch (err) {
+    try {
+      playlists = JSON.parse(localStorage.getItem('muzifi_local_playlists') || '[]');
+    } catch {
+      playlists = [];
+    }
+  }
+  store.set({ playlists });
 
     if (!playlists || playlists.length === 0) {
       listEl.innerHTML = `
@@ -163,13 +195,6 @@ export async function showAddToPlaylistModal({ trackIds = [], trackTitle = '', o
         if (pl) addTracksToPlaylist(pl.id, pl.name);
       });
     });
-  } catch (err) {
-    listEl.innerHTML = `
-      <div style="text-align:center;padding:12px;color:var(--accent-danger);font-size:0.85rem;">
-        Lỗi tải danh sách: ${escapeHtml(err.message)}
-      </div>
-    `;
-  }
 }
 
 /**
@@ -329,13 +354,26 @@ export async function showAddTracksToPlaylistModal({ playlistId, playlistName, c
     if (selectedNewIds.size === 0) return;
     submitBtn.disabled = true;
     submitBtn.textContent = 'Đang thêm...';
+    const idsToAdd = Array.from(selectedNewIds);
     try {
-      const idsToAdd = Array.from(selectedNewIds);
       await api.playlists.addTracks(playlistId, idsToAdd);
       showToast(`Đã thêm ${idsToAdd.length} bài vào "${playlistName}"!`);
       closeModal();
       if (onSuccess) onSuccess();
     } catch (err) {
+      const list = JSON.parse(localStorage.getItem('muzifi_local_playlists') || '[]');
+      const targetPl = list.find(p => p.id === playlistId);
+      if (targetPl) {
+        if (!targetPl.track_ids) targetPl.track_ids = [];
+        idsToAdd.forEach(id => {
+          if (!targetPl.track_ids.includes(id)) targetPl.track_ids.push(id);
+        });
+        targetPl.track_count = targetPl.track_ids.length;
+        localStorage.setItem('muzifi_local_playlists', JSON.stringify(list));
+        closeModal();
+        if (onSuccess) onSuccess();
+        return;
+      }
       alert('Lỗi thêm bài: ' + err.message);
       submitBtn.disabled = false;
       updateSummaryUI();
@@ -346,12 +384,12 @@ export async function showAddTracksToPlaylistModal({ playlistId, playlistName, c
   try {
     const res = await api.tracks.list({ sort: 'created_desc' });
     allLibraryTracks = res.tracks || [];
-    renderFilteredTracks();
   } catch (err) {
-    listEl.innerHTML = `
-      <div style="text-align:center;padding:20px;color:var(--accent-danger);">
-        Lỗi tải thư viện: ${escapeHtml(err.message)}
-      </div>
-    `;
+    try {
+      allLibraryTracks = await getAllOfflineTracks();
+    } catch {
+      allLibraryTracks = [];
+    }
   }
+  renderFilteredTracks();
 }

@@ -66,6 +66,7 @@ export class PlayerEngine {
 
     // Full Player
     this.fullPlayer = document.getElementById('full-player');
+    this.playerShareBtn = document.getElementById('btn-player-share');
     this.playerDownloadBtn = document.getElementById('btn-player-download');
     this.playerTitle = document.getElementById('player-title');
     this.playerArtist = document.getElementById('player-artist');
@@ -146,16 +147,24 @@ export class PlayerEngine {
       mediaEl.addEventListener('play', () => {
         this.onPlayStateChange(true);
         this.bindMediaSessionActions();
+        if (mediaEl.readyState < 3) {
+          store.set({ isBuffering: true });
+        }
       });
       mediaEl.addEventListener('playing', () => {
         this.hidePlayerLoading();
+        store.set({ isBuffering: false });
         this.syncPositionState();
         this.bindMediaSessionActions();
       });
       mediaEl.addEventListener('canplay', () => {
         this.hidePlayerLoading();
+        if (!mediaEl.paused) {
+          store.set({ isBuffering: false });
+        }
       });
       mediaEl.addEventListener('waiting', () => {
+        store.set({ isBuffering: true });
         const { currentTrack } = store.get();
         if (currentTrack?.isOnline) {
           this.showPlayerLoading('Đang tải luồng...');
@@ -163,12 +172,14 @@ export class PlayerEngine {
       });
       mediaEl.addEventListener('pause', () => {
         this.hidePlayerLoading();
+        store.set({ isBuffering: false });
         this.onPlayStateChange(false);
         this.syncPositionState();
       });
       mediaEl.addEventListener('loadedmetadata', () => this.onLoadedMetadata());
       mediaEl.addEventListener('error', (e) => {
         this.hidePlayerLoading();
+        store.set({ isBuffering: false });
         this.onError(e);
       });
     };
@@ -345,6 +356,11 @@ export class PlayerEngine {
       this.sleepBtn.addEventListener('click', () => this.showSleepTimerModal());
     }
 
+    // Share Track button
+    if (this.playerShareBtn) {
+      this.playerShareBtn.addEventListener('click', () => this.shareCurrentTrack());
+    }
+
     // YouTube Music Tabs & Overlays
     if (this.tabUpNextBtn) {
       this.tabUpNextBtn.addEventListener('click', () => this.toggleUpNext());
@@ -492,10 +508,12 @@ export class PlayerEngine {
 
   getAuthStreamUrl(url) {
     if (!url) return url;
+    const apiBase = localStorage.getItem('muzifi_server_url') || '';
+    const fullUrl = (url.startsWith('/') && apiBase) ? `${apiBase}${url}` : url;
     const token = localStorage.getItem('muzifi_token') || localStorage.getItem('metube_token');
-    if (!token) return url;
-    const separator = url.includes('?') ? '&' : '?';
-    return `${url}${separator}token=${encodeURIComponent(token)}`;
+    if (!token) return fullUrl;
+    const separator = fullUrl.includes('?') ? '&' : '?';
+    return `${fullUrl}${separator}token=${encodeURIComponent(token)}`;
   }
 
   async loadTrack(track, autoPlay = true, resumePosition = 0, shouldPop = false) {
@@ -508,8 +526,16 @@ export class PlayerEngine {
     }
 
     // 1. Immediately display player and update UI (0ms synchronous response)
-    const thumbUrl = `/api/tracks/${track.id}/thumb`;
-    if (this.miniThumb) this.miniThumb.src = thumbUrl;
+    const apiBase = localStorage.getItem('muzifi_server_url') || '';
+    let thumbUrl = track.thumbBlob
+      ? URL.createObjectURL(track.thumbBlob)
+      : (track.thumbDataUrl || `${apiBase}/api/tracks/${track.id}/thumb`);
+    const fallbackSvg = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%236366f1"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>';
+
+    if (this.miniThumb) {
+      this.miniThumb.src = thumbUrl;
+      this.miniThumb.onerror = () => { this.miniThumb.src = fallbackSvg; };
+    }
     if (this.miniTitle) this.miniTitle.textContent = track.title;
     if (this.miniArtist) this.miniArtist.textContent = track.artist || 'Nghệ sĩ';
     if (this.miniPlayer) this.miniPlayer.style.display = 'flex';
@@ -518,7 +544,10 @@ export class PlayerEngine {
     if (this.playerArtist) {
       this.playerArtist.textContent = track.artist || 'Nghệ sĩ';
     }
-    if (this.playerArtwork) this.playerArtwork.src = thumbUrl;
+    if (this.playerArtwork) {
+      this.playerArtwork.src = thumbUrl;
+      this.playerArtwork.onerror = () => { this.playerArtwork.src = fallbackSvg; };
+    }
     if (this.playerTypeBadge) this.playerTypeBadge.style.display = 'none';
     if (this.playerDownloadBtn) this.playerDownloadBtn.style.display = 'none';
 
@@ -539,11 +568,18 @@ export class PlayerEngine {
     if (this.rateBtn) this.rateBtn.textContent = `${currentRate}x`;
     this.activeMedia.loop = false;
 
-    // 3. Resolve audio stream synchronously (using preloaded memory blob if ready)
+    // 3. Resolve audio stream synchronously (using local blob, memory preloaded blob, or IndexedDB)
     let streamUrl = this.getAuthStreamUrl(`/api/tracks/${track.id}/stream`);
     let isFromCache = false;
 
-    if (this.preloadedTrackId === track.id && this.preloadedBlobUrl) {
+    if (track.blob) {
+      if (this.currentBlobUrl) {
+        try { URL.revokeObjectURL(this.currentBlobUrl); } catch (e) {}
+      }
+      this.currentBlobUrl = URL.createObjectURL(track.blob);
+      streamUrl = this.currentBlobUrl;
+      isFromCache = true;
+    } else if (this.preloadedTrackId === track.id && this.preloadedBlobUrl) {
       if (this.currentBlobUrl && this.currentBlobUrl !== this.preloadedBlobUrl) {
         try { URL.revokeObjectURL(this.currentBlobUrl); } catch (e) {}
       }
@@ -556,6 +592,27 @@ export class PlayerEngine {
       this.preloadedBlobUrl = null;
       this.preloadedTrackId = null;
       this.preloadedLyrics = null;
+    } else {
+      try {
+        const offlineRec = await getTrackOffline(track.id);
+        if (offlineRec && offlineRec.blob) {
+          if (this.currentBlobUrl) {
+            try { URL.revokeObjectURL(this.currentBlobUrl); } catch (e) {}
+          }
+          this.currentBlobUrl = URL.createObjectURL(offlineRec.blob);
+          streamUrl = this.currentBlobUrl;
+          isFromCache = true;
+          if (offlineRec.lyrics && !this.currentLyrics) {
+            this.currentLyrics = offlineRec.lyrics;
+            if (this.isLyricsOpen) this.renderLyrics(this.currentLyrics);
+          }
+          if (offlineRec.thumbBlob) {
+            const obThumb = URL.createObjectURL(offlineRec.thumbBlob);
+            if (this.playerArtwork) this.playerArtwork.src = obThumb;
+            if (this.miniThumb) this.miniThumb.src = obThumb;
+          }
+        }
+      } catch (e) {}
     }
 
     // Assign source, load, seek, and play SYNCHRONOUSLY (Essential for iOS Safari & Android background playback)
@@ -584,17 +641,15 @@ export class PlayerEngine {
     }
 
     // 5. Asynchronously check/save IndexedDB in background without blocking audio playback
-    if (!isFromCache) {
-      getTrackOffline(track.id).then(offlineRec => {
-        if (offlineRec && offlineRec.blob && offlineRec.blob.size > 0) {
-          if (offlineRec.lyrics && !this.currentLyrics) {
-            this.currentLyrics = offlineRec.lyrics;
-            if (this.isLyricsOpen) this.renderLyrics(this.currentLyrics);
-          }
-        } else if (navigator.onLine) {
-          saveTrackOffline(track).catch(() => {});
-        }
-      }).catch(err => console.warn('IndexedDB track check notice:', err));
+    const isStandalone = Boolean(
+      window.Capacitor ||
+      window.__muzifi_guest_mode ||
+      window.location.protocol === 'capacitor:' ||
+      window.location.protocol === 'file:' ||
+      localStorage.getItem('muzifi_standalone_mode') === 'true'
+    );
+    if (!isFromCache && !isStandalone && navigator.onLine) {
+      saveTrackOffline(track).catch(() => {});
     }
 
     // Refresh lyrics if currently open
@@ -652,15 +707,19 @@ export class PlayerEngine {
     // Native loop is managed in onEnded() for cross-device consistency
     this.activeMedia.loop = false;
 
+    const rawArtist = (onlineTrack.artist || onlineTrack.channel || '').trim();
+    const cleanArtist = (!rawArtist || /^youtube$/i.test(rawArtist)) ? 'Nghệ sĩ' : rawArtist.replace(/\byoutube\b/gi, '').trim() || 'Nghệ sĩ';
+    const cleanTitle = (onlineTrack.title || 'Bản nhạc trực tuyến').replace(/\s*-\s*YouTube$/i, '').trim();
+
     const thumbUrl = onlineTrack.thumbnail_url || '/api/tracks/placeholder/thumb';
     if (this.miniThumb) this.miniThumb.src = thumbUrl;
-    if (this.miniTitle) this.miniTitle.textContent = onlineTrack.title;
-    if (this.miniArtist) this.miniArtist.textContent = onlineTrack.artist || 'Nghệ sĩ';
+    if (this.miniTitle) this.miniTitle.textContent = cleanTitle;
+    if (this.miniArtist) this.miniArtist.textContent = cleanArtist;
     if (this.miniPlayer) this.miniPlayer.style.display = 'flex';
 
-    if (this.playerTitle) this.playerTitle.textContent = onlineTrack.title;
+    if (this.playerTitle) this.playerTitle.textContent = cleanTitle;
     if (this.playerArtist) {
-      this.playerArtist.textContent = onlineTrack.artist || 'Nghệ sĩ';
+      this.playerArtist.textContent = cleanArtist;
     }
     if (this.playerArtwork) this.playerArtwork.src = thumbUrl;
     if (this.playerTypeBadge) this.playerTypeBadge.style.display = 'none';
@@ -699,22 +758,32 @@ export class PlayerEngine {
     this.preloadNextInQueue();
   }
 
+  playOnlineTrack(onlineTrack, shouldPop = false) {
+    return this.loadOnlineTrack(onlineTrack, shouldPop);
+  }
+
   updateMediaSession(track) {
     if (!('mediaSession' in navigator) || !track) return;
 
-    let thumbUrl = track.thumbnail_url;
+    let thumbUrl = track.thumbBlob ? URL.createObjectURL(track.thumbBlob) : track.thumbnail_url;
     if (!thumbUrl) {
-      thumbUrl = `${window.location.origin}/api/tracks/${track.id}/thumb`;
+      const apiBase = localStorage.getItem('muzifi_server_url') || '';
+      thumbUrl = `${apiBase || window.location.origin}/api/tracks/${track.id}/thumb`;
     } else if (thumbUrl.startsWith('/')) {
-      thumbUrl = `${window.location.origin}${thumbUrl}`;
+      const apiBase = localStorage.getItem('muzifi_server_url') || '';
+      thumbUrl = `${apiBase || window.location.origin}${thumbUrl}`;
     }
 
-    const artistName = (track.artist && track.artist !== 'Nghệ sĩ') ? track.artist : (track.channel || 'Muzifi');
-    const albumName = track.album || (track.isOnline ? 'Trực tuyến' : 'Muzifi');
+    let artistName = (track.artist && track.artist !== 'Nghệ sĩ') ? track.artist : (track.channel || 'Muzifi');
+    if (/^youtube$/i.test(artistName.trim())) artistName = 'Muzifi';
+    else artistName = artistName.replace(/\byoutube\b/gi, '').trim() || 'Muzifi';
+
+    const cleanTitle = (track.title || 'Đang phát').replace(/\s*-\s*YouTube$/i, '').trim();
+    const albumName = track.album && !/youtube/i.test(track.album) ? track.album : (track.isOnline ? 'Trực tuyến' : 'Muzifi');
 
     try {
       navigator.mediaSession.metadata = new MediaMetadata({
-        title: track.title || 'Đang phát',
+        title: cleanTitle,
         artist: artistName,
         album: albumName,
         artwork: [
@@ -1251,6 +1320,15 @@ export class PlayerEngine {
 
     this.updateLyricsHighlight();
     this.checkPreloadNextTrack(current, duration);
+
+    // Smooth volume fade out for end_of_track sleep timer in the final 45 seconds
+    const { sleepTimer } = store.get();
+    if (sleepTimer && sleepTimer.mode === 'end_of_track' && duration > 0) {
+      const timeLeftSec = duration - current;
+      if (timeLeftSec <= 45 && timeLeftSec > 0) {
+        this.applySleepFade(timeLeftSec * 1000, 45000);
+      }
+    }
   }
 
   checkPreloadNextTrack(current, duration) {
@@ -1396,11 +1474,36 @@ export class PlayerEngine {
     }
   }
 
+  restoreSleepVolume() {
+    if (this._sleepInitialVolume !== undefined && this.activeMedia) {
+      try {
+        this.activeMedia.volume = this._sleepInitialVolume;
+      } catch {}
+      delete this._sleepInitialVolume;
+    }
+  }
+
+  applySleepFade(leftMs, totalFadeMs = 60000) {
+    if (!this.activeMedia) return;
+    if (leftMs <= totalFadeMs && leftMs > 0) {
+      if (this._sleepInitialVolume === undefined) {
+        this._sleepInitialVolume = typeof this.activeMedia.volume === 'number' ? this.activeMedia.volume : 1.0;
+      }
+      const ratio = Math.max(0, Math.min(1, leftMs / totalFadeMs));
+      // Psychoacoustic smooth cubic easing curve
+      const targetVol = this._sleepInitialVolume * Math.pow(ratio, 1.4);
+      this.activeMedia.volume = Math.max(0, Math.min(1, targetVol));
+    } else if (leftMs > totalFadeMs && this._sleepInitialVolume !== undefined) {
+      this.restoreSleepVolume();
+    }
+  }
+
   clearSleepTimer() {
     const { sleepTimerInterval } = store.get();
     if (sleepTimerInterval) {
       clearInterval(sleepTimerInterval);
     }
+    this.restoreSleepVolume();
     store.set({ sleepTimer: null, sleepTimerInterval: null });
     if (this.sleepBtn) {
       this.sleepBtn.classList.remove('active');
@@ -1439,12 +1542,19 @@ export class PlayerEngine {
     const interval = setInterval(() => {
       const leftMs = endTime - Date.now();
       if (leftMs <= 0) {
-        this.clearSleepTimer();
         this.pause();
+        this.clearSleepTimer();
       } else {
+        // Smoothly fade out volume in the last 60 seconds
+        this.applySleepFade(leftMs, 60000);
+
         const leftMin = Math.ceil(leftMs / (60 * 1000));
         if (this.sleepText) {
-          this.sleepText.textContent = `${leftMin}m`;
+          if (leftMs <= 60000) {
+            this.sleepText.textContent = `${Math.ceil(leftMs / 1000)}s`;
+          } else {
+            this.sleepText.textContent = `${leftMin}m`;
+          }
           this.sleepText.style.display = 'inline-flex';
         }
       }
@@ -1457,7 +1567,7 @@ export class PlayerEngine {
 
     if (this.sleepBtn) {
       this.sleepBtn.classList.add('active');
-      this.sleepBtn.title = `Hẹn giờ: ${minutes} phút`;
+      this.sleepBtn.title = `Hẹn giờ: ${minutes} phút (giảm dần âm lượng 60s cuối)`;
     }
     if (this.sleepText) {
       this.sleepText.textContent = `${minutes}m`;
@@ -1475,6 +1585,7 @@ export class PlayerEngine {
     sleepTimer.endTime = newEndTime;
     const leftMin = Math.ceil((newEndTime - Date.now()) / (60 * 1000));
     sleepTimer.minutes = leftMin;
+    this.restoreSleepVolume();
     store.set({ sleepTimer: { ...sleepTimer } });
     if (this.sleepText) {
       this.sleepText.textContent = `${leftMin}m`;
@@ -1529,6 +1640,11 @@ export class PlayerEngine {
               Hẹn giờ đi ngủ
             </h3>
             <button class="icon-btn" id="modal-sleep-close" style="min-width:32px;min-height:32px;">${icons.x}</button>
+          </div>
+
+          <div style="font-size:0.75rem;color:var(--text-muted);display:flex;align-items:center;gap:6px;padding:10px 4px 4px 4px;">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+            <span>Tự động giảm âm lượng êm dịu trong 60 giây cuối trước khi dừng</span>
           </div>
 
           ${isRunning ? `
@@ -1683,8 +1799,8 @@ export class PlayerEngine {
 
   startStateSyncTimer() {
     setInterval(() => {
-      const { currentTrack, queue, loopMode, isShuffle, playbackRate } = store.get();
-      if (!currentTrack) return;
+      const { currentTrack, queue, loopMode, isShuffle, playbackRate, isAuthenticated } = store.get();
+      if (!currentTrack || !isAuthenticated) return;
 
       const positionSec = Math.round(this.activeMedia.currentTime || 0);
 
@@ -1752,10 +1868,16 @@ export class PlayerEngine {
     this.isLyricsOpen = true;
     if (this.lyricsView) this.lyricsView.style.display = 'flex';
     if (this.tabLyricsBtn) this.tabLyricsBtn.classList.add('active');
-    if (!this.currentLyrics) {
-      this.loadLyricsForCurrentTrack();
+
+    // If lyrics are already available and valid, ensure they are rendered into the DOM
+    if (this.currentLyrics && (this.currentLyrics.hasSynced || this.currentLyrics.plainLyrics)) {
+      if (!this.lyricsLinesWrapper || !this.lyricsLinesWrapper.hasChildNodes()) {
+        this.renderLyrics(this.currentLyrics);
+      } else {
+        this.updateLyricsHighlight(true);
+      }
     } else {
-      this.updateLyricsHighlight(true);
+      this.loadLyricsForCurrentTrack();
     }
   }
 
@@ -1798,11 +1920,14 @@ export class PlayerEngine {
     } catch {}
 
     try {
-      const ytId = track.youtubeId || (track.id && track.id.startsWith('yt_') ? track.id.split('_')[1] : '');
+      const ytId = track.youtubeId || 
+        (track.id && track.id.startsWith('yt_') ? track.id.split('_')[1] : '') ||
+        (track.source_url ? (track.source_url.match(/(?:v=|\/embed\/|\/watch\?v=|youtu\.be\/|\/v\/)([a-zA-Z0-9_-]{11})/)?.[1] || '') : '');
+
       const res = await api.lyrics.get({
-        trackId: track.isOnline ? '' : track.id,
+        trackId: track.isOnline ? '' : (track.id || ''),
         youtubeId: ytId,
-        title: track.title,
+        title: track.title || '',
         artist: track.artist || '',
         duration: track.duration_sec || 0
       });
@@ -1810,7 +1935,7 @@ export class PlayerEngine {
       if (this.lyricsLoadingTrackId !== track.id) return;
       if (this.lyricsLoading) this.lyricsLoading.style.display = 'none';
 
-      if (res.success && (res.hasSynced || res.plainLyrics)) {
+      if (res && res.success && (res.hasSynced || res.plainLyrics)) {
         this.currentLyrics = res;
         this.renderLyrics(res);
       } else {
@@ -1978,6 +2103,9 @@ export class PlayerEngine {
                 <div class="ytm-item-duration">
                   ${this.formatTime(track.duration_sec || 0)}
                 </div>
+                <button class="icon-btn btn-upnext-share" data-id="${track.id}" title="Chia sẻ bài hát" style="width:30px;height:30px;border-radius:50%;color:var(--text-muted);">
+                  ${icons.share}
+                </button>
                 ${track.isOnline ? `
                   <button class="icon-btn btn-upnext-dl" data-id="${track.id}" title="Tải bài này về máy" style="width:30px;height:30px;border-radius:50%;color:var(--text-muted);">
                     ${icons.download}
@@ -1993,7 +2121,7 @@ export class PlayerEngine {
     // Bind click events on items
     this.upNextContentWrapper.querySelectorAll('.ytm-queue-item').forEach(el => {
       el.addEventListener('click', (e) => {
-        if (e.target.closest('.btn-upnext-dl')) return;
+        if (e.target.closest('.btn-upnext-dl') || e.target.closest('.btn-upnext-share')) return;
         const id = el.dataset.id;
         const targetTrack = queue.find(t => t.id === id);
         if (targetTrack) {
@@ -2003,6 +2131,16 @@ export class PlayerEngine {
             this.loadTrack(targetTrack, true, 0, false);
           }
         }
+      });
+    });
+
+    // Bind click on upnext share buttons
+    this.upNextContentWrapper.querySelectorAll('.btn-upnext-share').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.id;
+        const targetTrack = (currentTrack && currentTrack.id === id) ? currentTrack : queue.find(t => t.id === id);
+        if (targetTrack) this.shareTrack(targetTrack);
       });
     });
 
@@ -2189,6 +2327,147 @@ export class PlayerEngine {
       if (this.upNextView && this.upNextView.style.display !== 'none') {
         this.renderUpNextContent();
       }
+    }
+  }
+
+  async shareTrack(track) {
+    if (!track) return;
+    const origin = window.location.origin;
+    let ytId = track.youtube_id || track.youtubeId;
+    if (!ytId && track.id && typeof track.id === 'string' && track.id.startsWith('yt_')) {
+      const parts = track.id.split('_');
+      if (parts.length >= 2) ytId = parts[1];
+    }
+    if (!ytId && track.source_url) {
+      const match = track.source_url.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
+      if (match) ytId = match[1];
+    }
+    if (!ytId && track.url) {
+      const match = track.url.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
+      if (match) ytId = match[1];
+    }
+    const isOnline = !!(ytId || track.isOnline);
+    const shareUrl = isOnline && ytId
+      ? `${origin}/?v=${encodeURIComponent(ytId)}`
+      : `${origin}/?track=${encodeURIComponent(track.id)}`;
+
+    const cleanTitle = (track.title || 'Bài hát').replace(/\s*-\s*YouTube$/i, '').trim();
+    let rawArtist = track.artist || track.channel || '';
+    if (/^youtube$/i.test(rawArtist.trim())) rawArtist = '';
+    else rawArtist = rawArtist.replace(/\byoutube\b/gi, '').trim();
+    // Mobile: native share sheet
+    const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+    if (isMobile && navigator.share) {
+      try {
+        await navigator.share({
+          title: `${cleanTitle}${rawArtist && rawArtist !== 'Nghệ sĩ' ? ` - ${rawArtist}` : ''} | Muzifi`,
+          text: `Nghe "${cleanTitle}" trên Muzifi:`,
+          url: shareUrl
+        });
+        return;
+      } catch (err) {
+        if (err.name === 'AbortError') return;
+        // fall through to modal
+      }
+    }
+
+    // Desktop: copy link immediately to clipboard and open share options
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      copied = true;
+    } catch (_) {}
+
+    this.showToast(copied ? 'Đã sao chép liên kết chia sẻ' : 'Chia sẻ bài hát', 2000);
+    this.showShareModal({ title: cleanTitle, artist: rawArtist, shareUrl, copied });
+  }
+
+  showShareModal({ title, artist, shareUrl, copied = false }) {
+    document.getElementById('share-modal-overlay')?.remove();
+    const displayArtist = (artist && artist !== 'Nghệ sĩ') ? artist : '';
+    const overlay = document.createElement('div');
+    overlay.id = 'share-modal-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.65);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML = `
+      <style>
+        @keyframes _sm_up{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+        #share-modal-box{background:var(--bg-secondary,#1e1e2e);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:26px 22px 22px;width:min(440px,92vw);animation:_sm_up .25s cubic-bezier(.34,1.56,.64,1);box-shadow:0 24px 64px rgba(0,0,0,.6);}
+        #share-modal-box h3{margin:0 0 2px;font-size:1rem;color:var(--text-primary,#fff);}
+        .sm-subtitle{font-size:.8rem;color:var(--text-secondary,#aaa);margin-bottom:18px;}
+        .sm-label{font-size:.72rem;color:var(--text-secondary,#aaa);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em;}
+        .sm-link-row{display:flex;gap:8px;align-items:center;}
+        .sm-link-input{flex:1;background:var(--bg-tertiary,#2a2a3e);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:10px 12px;color:var(--text-primary,#fff);font-size:.85rem;outline:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+        #sm-copy-btn{background:var(--accent,#7c3aed);color:#fff;border:none;border-radius:10px;padding:10px 16px;font-size:.85rem;font-weight:600;cursor:pointer;white-space:nowrap;transition:background .2s,transform .1s;}
+        #sm-copy-btn:hover{background:var(--accent-hover,#6d28d9);}
+        #sm-copy-btn:active{transform:scale(.95);}
+        .sm-socials{display:flex;gap:10px;margin-top:16px;}
+        .sm-soc-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:9px 8px;font-size:.8rem;font-weight:500;color:var(--text-primary,#fff);text-decoration:none;transition:background .18s;cursor:pointer;}
+        .sm-soc-btn:hover{background:rgba(255,255,255,.13);}
+        #sm-close-btn{float:right;background:none;border:none;cursor:pointer;color:var(--text-secondary,#aaa);font-size:1.3rem;line-height:1;padding:0;margin-top:-4px;transition:color .15s;}
+        #sm-close-btn:hover{color:#fff;}
+      </style>
+      <div id="share-modal-box">
+        <button id="sm-close-btn" aria-label="Đóng">&#x2715;</button>
+        <h3>Chia s&#7867; b&#224;i h&#225;t</h3>
+        <div class="sm-subtitle">${displayArtist ? `${this.escapeHtml(title)} &mdash; ${this.escapeHtml(displayArtist)}` : this.escapeHtml(title)}</div>
+        <div class="sm-label">Li&#234;n k&#7871;t chia s&#7867;</div>
+        <div class="sm-link-row">
+          <input id="sm-link-input" class="sm-link-input" type="text" readonly value="${shareUrl}" />
+          <button id="sm-copy-btn">Sao ch&#233;p</button>
+        </div>
+        <div class="sm-socials">
+          <a class="sm-soc-btn" id="sm-wa" target="_blank" rel="noopener">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="#25d366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+            WhatsApp
+          </a>
+          <a class="sm-soc-btn" id="sm-fb" target="_blank" rel="noopener">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="#1877f2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.994 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+            Facebook
+          </a>
+          <a class="sm-soc-btn" id="sm-tg" target="_blank" rel="noopener">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="#29b6f6"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
+            Telegram
+          </a>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    const enc = encodeURIComponent(shareUrl);
+    const txt = encodeURIComponent(`Nghe "${title}" tr\u00ean Muzifi: ${shareUrl}`);
+    overlay.querySelector('#sm-wa').href = `https://wa.me/?text=${txt}`;
+    overlay.querySelector('#sm-fb').href = `https://www.facebook.com/sharer/sharer.php?u=${enc}`;
+    overlay.querySelector('#sm-tg').href = `https://t.me/share/url?url=${enc}&text=${encodeURIComponent(`Nghe "${title}" tr\u00ean Muzifi`)}`;
+    const copyBtn = overlay.querySelector('#sm-copy-btn');
+    const linkInput = overlay.querySelector('#sm-link-input');
+
+    if (copied) {
+      copyBtn.textContent = '\u2713 \u0110\u00e3 sao ch\u00e9p';
+      copyBtn.style.background = '#22c55e';
+      setTimeout(() => { copyBtn.textContent = 'Sao ch\u00e9p'; copyBtn.style.background = ''; }, 2500);
+    }
+    copyBtn.addEventListener('click', async () => {
+      let ok = false;
+      try { await navigator.clipboard.writeText(shareUrl); ok = true; } catch (_) {}
+      if (!ok) { try { linkInput.select(); ok = document.execCommand('copy'); } catch (_) {} }
+      if (ok) {
+        copyBtn.textContent = '\u2713 \u0110\u00e3 sao ch\u00e9p';
+        copyBtn.style.background = '#22c55e';
+        setTimeout(() => { copyBtn.textContent = 'Sao ch\u00e9p'; copyBtn.style.background = ''; }, 2000);
+      }
+    });
+    linkInput.addEventListener('click', () => linkInput.select());
+    const close = () => overlay.remove();
+    overlay.querySelector('#sm-close-btn').addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    document.addEventListener('keydown', function esc(e) { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc); } });
+  }
+
+  shareCurrentTrack() {
+    const { currentTrack } = store.get();
+    if (currentTrack) {
+      this.shareTrack(currentTrack);
+    } else {
+      this.showToast('Chưa có bài hát nào đang phát', 2000);
     }
   }
 

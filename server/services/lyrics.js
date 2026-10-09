@@ -350,13 +350,24 @@ export async function getLyrics({ trackId = '', youtubeId = '', title = '', arti
       cleanA = cleanA || localTrack.artist;
       dur = dur || localTrack.duration_sec || 0;
 
+      // If no ytId provided, try to extract from local track's source_url
+      if (!ytId && localTrack.source_url) {
+        const match = localTrack.source_url.match(/(?:v=|\/embed\/|\/watch\?v=|youtu\.be\/|\/v\/)([a-zA-Z0-9_-]{11})/);
+        if (match && match[1]) {
+          ytId = normalizeYouTubeId(match[1]);
+        }
+      }
+
       // Check for sidecar .lrc file in media folder
-      const trackExt = path.extname(localTrack.file_path);
+      const trackExt = path.extname(localTrack.file_path || '');
+      const baseName = localTrack.file_path ? path.basename(localTrack.file_path, trackExt) : '';
       const candidateLrcPaths = [
         path.join(config.MEDIA_DIR, `${localTrack.id}.lrc`),
-        path.join(config.MEDIA_DIR, localTrack.file_path.replace(trackExt, '.lrc')),
-        path.join(config.MEDIA_DIR, `${localTrack.title} - ${localTrack.artist}.lrc`)
-      ];
+        baseName ? path.join(config.MEDIA_DIR, `${baseName}.lrc`) : '',
+        localTrack.file_path ? path.join(config.MEDIA_DIR, localTrack.file_path.replace(trackExt, '.lrc')) : '',
+        path.join(config.MEDIA_DIR, `${localTrack.title} - ${localTrack.artist}.lrc`),
+        path.join(config.MEDIA_DIR, `${localTrack.artist} - ${localTrack.title}.lrc`)
+      ].filter(Boolean);
 
       for (const lrcPath of candidateLrcPaths) {
         if (fs.existsSync(lrcPath)) {

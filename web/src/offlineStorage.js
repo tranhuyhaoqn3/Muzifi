@@ -90,6 +90,57 @@ export async function getAllOfflineTrackIds() {
   }
 }
 
+/** Get all full track records (blobs, titles, artists, etc.) stored in IndexedDB */
+export async function getAllOfflineTracks() {
+  try {
+    const db = await openDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => resolve([]);
+    });
+  } catch {
+    return [];
+  }
+}
+
+/** Save or update a local track record directly in IndexedDB (for serverless/offline mode) */
+export async function saveLocalTrackDirect(record) {
+  if (!record || !record.id) return false;
+  try {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.put(record);
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (err) {
+    console.warn('[OfflineStorage] saveLocalTrackDirect error:', err);
+    return false;
+  }
+}
+
+/** Delete a track record directly from IndexedDB */
+export async function deleteOfflineTrack(trackId) {
+  if (!trackId) return false;
+  try {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.delete(trackId);
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => reject(req.error);
+    });
+  } catch {
+    return false;
+  }
+}
+
 const inFlightSaves = new Map();
 
 /** Download full track audio, thumbnail, and lyrics and save as Blob into IndexedDB */
@@ -199,7 +250,7 @@ async function _doSaveTrackOffline(track, token = '', onProgress = null) {
       blob: audioBlob,
       size: audioBlob.size,
       thumbBlob: thumbBlob,
-      lyrics: lyricsData,
+      lyrics: (lyricsData && (lyricsData.hasSynced || lyricsData.plainLyrics)) ? lyricsData : null,
       savedAt: Date.now()
     };
 

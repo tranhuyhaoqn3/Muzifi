@@ -8,7 +8,7 @@ const router = express.Router();
  * GET /api/lyrics
  * Query params: trackId, title, artist, duration
  */
-router.get('/', requireAuth, async (req, res) => {
+router.get('/', async (req, res) => {
   const { trackId, youtubeId, title, artist, duration } = req.query;
 
   try {

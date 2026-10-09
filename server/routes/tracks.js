@@ -10,6 +10,7 @@ import { probeMedia, generateVideoThumbnail } from '../services/ffmpeg.js';
 import { extractMetadata } from '../services/metadata.js';
 import { queue } from '../services/queue.js';
 import { getLyrics } from '../services/lyrics.js';
+import { enrichLibrary, enrichTrack } from '../services/enricher.js';
 
 const router = express.Router();
 
@@ -222,8 +223,17 @@ router.post('/upload', requireAuth, upload.array('files'), async (req, res) => {
   res.json({ tracks: results, errors });
 });
 
-// 3. Stream track with HTTP 206 Partial Content (ESSENTIAL FOR IOS SEEKING & BACKGROUND)
-router.get('/:id/stream', requireAuth, (req, res) => {
+// 2b. Public endpoint for shared track info
+router.get('/:id/shared', (req, res) => {
+  const track = db.prepare('SELECT id, title, artist, album, duration_sec, media_type, mime, created_at FROM tracks WHERE id = ?').get(req.params.id);
+  if (!track) {
+    return res.status(404).json({ error: 'Track not found' });
+  }
+  res.json({ track });
+});
+
+// 3. Stream track with HTTP 206 Partial Content (ESSENTIAL FOR IOS SEEKING & BACKGROUND & DIRECT SHARE PLAYBACK)
+router.get('/:id/stream', (req, res) => {
   const track = db.prepare('SELECT * FROM tracks WHERE id = ?').get(req.params.id);
   if (!track) {
     return res.status(404).send('Track not found');
@@ -400,6 +410,32 @@ router.post('/batch-delete', requireAuth, (req, res) => {
   }
 
   res.json({ success: true, count: deletedCount });
+});
+
+// 9. Auto-enrich library (find & repair missing thumbnails and lyrics)
+router.post('/enrich', requireAuth, async (req, res) => {
+  const userId = req.user?.id || 'default';
+  try {
+    const result = await enrichLibrary(userId);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('Enrich library error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 10. Enrich single track
+router.post('/:id/enrich', requireAuth, async (req, res) => {
+  const userId = req.user?.id || 'default';
+  try {
+    const track = db.prepare('SELECT * FROM tracks WHERE id = ? AND user_id = ?').get(req.params.id, userId);
+    if (!track) return res.status(404).json({ error: 'Track not found' });
+    const result = await enrichTrack(track);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('Enrich track error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 export default router;

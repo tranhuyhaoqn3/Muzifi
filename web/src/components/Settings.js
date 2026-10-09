@@ -123,7 +123,7 @@ export class SettingsView {
             Khi dịch vụ trực tuyến nâng cấp làm quá trình tải bị lỗi, bạn có thể cập nhật bộ công cụ tải bằng nút bên dưới.
           </p>
           <div style="display:flex;align-items:center;gap:12px;">
-            <button id="btn-update-ytdlp" class="btn-secondary">Cập nhật yt-dlp</button>
+            <button id="btn-update-ytdlp" class="btn-secondary">Cập nhật công cụ tải</button>
             <span id="ytdlp-status-text" style="font-size:0.85rem;color:var(--text-muted);"></span>
           </div>
         </div>

@@ -12,31 +12,110 @@ const GEMINI_MODELS = [
 ];
 
 /**
- * Curated seed queries matching top trending Vietnamese rappers & singers
- * (used as instant fallback if Gemini is offline or rate-limited)
+ * Curated seed queries — TOP 50 trending Vietnamese songs 2025-2026
+ * Gen Z / underground / mainstream — sorted most viral first
  */
 export const DEFAULT_SEED_QUERIES = [
-  { query: 'HIEUTHUHAI Trinh', title: 'Trình', artist: 'HIEUTHUHAI' },
-  { query: 'SOOBIN Gia Nhu', title: 'Giá Như', artist: 'SOOBIN' },
+  // === HIEUTHUHAI - vẫn đỉnh 2026 ===
+  { query: 'HIEUTHUHAI 2026 moi nhat', title: 'HIEUTHUHAI mới nhất', artist: 'HIEUTHUHAI' },
+  { query: 'HIEUTHUHAI NOLOVENOLIFE', title: 'NOLOVENOLIFE', artist: 'HIEUTHUHAI' },
+  { query: 'HIEUTHUHAI Gerdnang', title: 'GERDNANG', artist: 'HIEUTHUHAI' },
+
+  // === Wean - rapper Gen Z bùng nổ ===
+  { query: 'Wean rapper viet nam 2025', title: 'Wean trending', artist: 'Wean' },
+  { query: 'Wean Khong Can Qua Khu', title: 'Không Cần Quá Khứ', artist: 'Wean' },
+  { query: 'Wean co em trong tay', title: 'Có Em Trong Tay', artist: 'Wean' },
+
+  // === RPT MCK / MCK ===
+  { query: 'RPT MCK 2025 2026', title: 'RPT MCK mới', artist: 'RPT MCK' },
+  { query: 'RPT MCK tlinh Nhung Dieu Em Co The Lam', title: 'Những Điều Em Có Thể Làm', artist: 'RPT MCK & tlinh' },
+  { query: 'RPT MCK Dau Biet', title: 'Đâu Biết', artist: 'RPT MCK' },
+
+  // === tlinh ===
+  { query: 'tlinh 2025 moi nhat', title: 'tlinh mới nhất', artist: 'tlinh' },
+  { query: 'tlinh Dung Lam No Roi', title: 'Đừng Làm Nó Rơi', artist: 'tlinh' },
+  { query: 'tlinh Co Toi Trong Do Khong', title: 'Có Tôi Trong Đó Không', artist: 'tlinh' },
+
+  // === Dế Choắt ===
+  { query: 'De Choat rap viet 2025', title: 'Dế Choắt mới nhất', artist: 'Dế Choắt' },
+  { query: 'De Choat Chac Day Roi', title: 'Chắc Đây Rồi', artist: 'Dế Choắt' },
+
+  // === Tage ===
+  { query: 'Tage rapper viet 2025', title: 'Tage trending', artist: 'Tage' },
+  { query: 'Tage Mot Minh Thoi', title: 'Một Mình Thôi', artist: 'Tage' },
+
+  // === Seachains ===
+  { query: 'Seachains 2025', title: 'Seachains trending', artist: 'Seachains' },
+  { query: 'Seachains Buot', title: 'Buốt', artist: 'Seachains' },
+
+  // === GDucky ===
+  { query: 'GDucky Rap Viet 2025', title: 'GDucky mới nhất', artist: 'GDucky' },
+  { query: 'GDucky Hoa No Roi', title: 'Hoa Nở Rồi', artist: 'GDucky' },
+
+  // === Dangrangto & DONAL ===
+  { query: 'Dangrangto DONAL Xuong Rong', title: 'Xương Rồng', artist: 'Dangrangto & DONAL' },
+  { query: 'Dangrangto 2025 moi', title: 'Dangrangto mới nhất', artist: 'Dangrangto' },
+
+  // === Low G ===
+  { query: 'Low G NAYYYY 2025', title: 'NAYYYY', artist: 'Low G' },
+  { query: 'Low G 2026 moi nhat', title: 'Low G mới nhất', artist: 'Low G' },
+
+  // === Negav ===
+  { query: 'Negav 2025 moi nhat', title: 'Negav mới nhất', artist: 'Negav' },
+  { query: 'Negav Bac Tinh', title: 'Bạc Tình', artist: 'Negav' },
+
+  // === Captain Boy ===
+  { query: 'Captain Boy 2025 moi', title: 'Captain Boy mới nhất', artist: 'Captain Boy' },
+  { query: 'Captain Boy Ban Tay Lanh', title: 'Bàn Tay Lạnh', artist: 'Captain Boy' },
+
+  // === RHYDER ===
+  { query: 'RHYDER 2025 trending', title: 'RHYDER mới nhất', artist: 'RHYDER' },
+  { query: 'RHYDER Tiec Cho Em', title: 'Tiếc Cho Em', artist: 'RHYDER' },
+
+  // === Pháp Kiều ===
+  { query: 'Phap Kieu 2025 rap viet', title: 'Pháp Kiều mới nhất', artist: 'Pháp Kiều' },
+  { query: 'Phap Kieu Roi Ai Se La Nguoi', title: 'Rồi Ai Sẽ Là Người', artist: 'Pháp Kiều' },
+
+  // === Wxrdie ===
+  { query: 'Wxrdie 2025 moi nhat', title: 'Wxrdie mới nhất', artist: 'Wxrdie' },
+  { query: 'Wxrdie Chac Ai Do Se Den', title: 'Chắc Ai Đó Sẽ Đến', artist: 'Wxrdie' },
+
+  // === HURRYKNG ===
+  { query: 'HURRYKNG 2025 trending', title: 'HURRYKNG mới nhất', artist: 'HURRYKNG' },
+
+  // === Quang Hùng MasterD ===
+  { query: 'Quang Hung MasterD 2025 2026', title: 'Quang Hùng MasterD mới nhất', artist: 'Quang Hùng MasterD' },
   { query: 'Quang Hung MasterD Thuy Trieu', title: 'Thủy Triều', artist: 'Quang Hùng MasterD' },
-  { query: 'RHYDER Sau Con Suy', title: 'Sau Cơn Suy', artist: 'RHYDER' },
-  { query: 'Low G Hop On Da Show', title: 'Hop On Da Show', artist: 'Low G' },
-  { query: 'tlinh dung lam no roi', title: 'Đừng Làm Nó Rơi', artist: 'tlinh' },
-  { query: 'Dangrangto xuong rong', title: 'Xương Rồng', artist: 'Dangrangto' },
-  { query: 'HURRYKNG di ve nha', title: 'Đi Về Nhà', artist: 'HURRYKNG' },
-  { query: 'Phap Kieu DOC', title: 'DOC', artist: 'Pháp Kiều' },
-  { query: 'Negav Catch Me If You Can', title: 'Catch Me If You Can', artist: 'Negav' },
-  { query: 'Phuong My Chi Bong Phu Hoa', title: 'Bóng Phù Hoa', artist: 'Phương Mỹ Chi' },
-  { query: 'Duc Phuc Ngay Dau Tien', title: 'Ngày Đầu Tiên', artist: 'Đức Phúc' },
-  { query: 'Hoa Minzy Thi Mau', title: 'Thị Mầu', artist: 'Hòa Minzy' },
-  { query: 'Vu Buoc Qua Mua Co Don', title: 'Bước Qua Mùa Cô Đơn', artist: 'Vũ.' },
-  { query: 'Anh Trai Say Hi Ngon Lua Dem', title: 'Ngọn Lửa Đêm', artist: 'Anh Trai Say Hi' },
-  { query: 'HIEUTHUHAI Exit Sign', title: 'Exit Sign', artist: 'HIEUTHUHAI' },
-  { query: 'tlinh Yeu La Tha Thu', title: 'Yêu Là Tha Thứ', artist: 'tlinh' },
-  { query: 'Rhymastic Yeu 5', title: 'Yêu 5', artist: 'Rhymastic' },
-  { query: 'Captain Boy Luc Nho Nhat', title: 'Lúc Nhớ Nhất', artist: 'Captain Boy' },
-  { query: 'Phuong Ly Khong Phai Em', title: 'Không Phải Em', artist: 'Phương Ly' }
+
+  // === SOOBIN ===
+  { query: 'SOOBIN 2025 moi nhat hit', title: 'SOOBIN mới nhất', artist: 'SOOBIN' },
+  { query: 'SOOBIN Muon Nam', title: 'Muôn Năm', artist: 'SOOBIN' },
+
+  // === Vũ. ===
+  { query: 'Vu. 2025 indie viet trending', title: 'Vũ. mới nhất', artist: 'Vũ.' },
+  { query: 'Vu. Nguoi Ta Co Nguoi Ta', title: 'Người Ta Có Người Ta', artist: 'Vũ.' },
+
+  // === MONO ===
+  { query: 'MONO singer viet 2025', title: 'MONO mới nhất', artist: 'MONO' },
+  { query: 'MONO Waiting For You', title: 'Waiting For You', artist: 'MONO' },
+
+  // === Hoàng Dũng ===
+  { query: 'Hoang Dung 2025 moi nhat', title: 'Hoàng Dũng mới nhất', artist: 'Hoàng Dũng' },
+
+  // === Phương Mỹ Chi ===
+  { query: 'Phuong My Chi 2025 trending', title: 'Phương Mỹ Chi mới nhất', artist: 'Phương Mỹ Chi' },
+
+  // === GREY D ===
+  { query: 'GREY D 2025 hit moi', title: 'GREY D mới nhất', artist: 'GREY D' },
+
+  // === Andree Right Hand ===
+  { query: 'Andree Right Hand 2025', title: 'Andree Right Hand mới nhất', artist: 'Andree Right Hand' },
+
+  // === Show thực tế 2025-2026 ===
+  { query: 'Rap Viet mua 5 2025 best', title: 'Rap Việt mùa 5 hot nhất', artist: 'Rap Việt' },
+  { query: 'Anh Trai Say Hi 2025 hit', title: 'Anh Trai Say Hi 2025', artist: 'Anh Trai Say Hi' },
 ];
+
 
 /**
  * Ensure database table exists for recommendations cache
@@ -61,21 +140,26 @@ export async function promptGeminiForTrendingQueries(apiKey = null) {
     return DEFAULT_SEED_QUERIES;
   }
 
-  const prompt = `Bạn là chuyên gia âm nhạc Việt Nam.
-Thị trường âm nhạc Việt Nam hiện nay ghi nhận sự bứt phá mạnh mẽ từ các show truyền hình thực tế (như Anh Trai Say Hi, Anh Trai Vượt Ngàn Chông Gai, Rap Việt) cùng các album cá nhân chất lượng cao.
-Các nghệ sĩ tiêu biểu đang dẫn đầu xu hướng gồm:
-- Hit-makers & Ca sĩ đa năng: HIEUTHUHAI, SOOBIN, Quang Hùng MasterD, RHYDER
-- Rapper nổi tiếng: Low G, tlinh, Rhymastic, Dangrangto & DONAL, HURRYKNG, Negav, Pháp Kiều, Captain Boy
-- Ca sĩ Pop/Ballad: Phương Mỹ Chi, Hòa Minzy, Đức Phúc, Phùng Khánh Linh, Vũ.
-- Nhóm nhạc & show: Anh Trai Say Hi cast, Rap Việt mùa 4, Underground Việt Nam
+  const now = new Date();
+  const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1).toLocaleDateString('vi-VN', { month: 'long', year: 'numeric' });
 
-Hãy liệt kê danh sách 50 bài hát/hit đang thịnh hành và viral nhất của các nghệ sĩ trên, bao gồm đa dạng thể loại (rap, pop, ballad, indie, r&b).
+  const prompt = `Bạn là chuyên gia âm nhạc Việt Nam cập nhật đến ${now.toLocaleDateString('vi-VN', { month: 'long', year: 'numeric' })}.
+
+Nhiệm vụ: Liệt kê 50 bài hát Việt Nam đang VIRAL và TRENDING NHẤT tính từ ${sixMonthsAgo} đến nay.
+
+YÊU CẦU QUAN TRỌNG:
+- Ưu tiên bài phát hành trong 6 tháng gần nhất (mới = ưu tiên hơn)
+- Sắp xếp từ viral nhất / mới nhất xuống cũ hơn
+- Bao gồm: rap (Rap Việt, underground), pop, ballad, indie, R&B
+- Nghệ sĩ tiêu biểu: HIEUTHUHAI, SOOBIN, Quang Hùng MasterD, RHYDER, Dangrangto & DONAL, tlinh, Low G, Negav, Pháp Kiều, Captain Boy, Wxrdie, RPT MCK, Vũ., Hoàng Dũng, Phương Mỹ Chi, MONO, Phùng Khánh Linh, và các nghệ sĩ từ show Anh Trai Say Hi, Anh Trai Vượt Ngàn Chông Gai, Rap Việt mùa 4
+- KHÔNG đưa bài phát hành trước năm 2024 trừ khi đang re-viral mạnh
+
 Mỗi bài hát gồm:
-- "query": Cụm từ tìm kiếm ngắn gọn gồm "Tên nghệ sĩ + Tên bài hát" (ví dụ: "HIEUTHUHAI Trình", "SOOBIN Giá Như")
-- "title": Tên bài hát chính xác
-- "artist": Tên nghệ sĩ
+- "query": cụm tìm kiếm ngắn "Tên nghệ sĩ + Tên bài" (ví dụ: "Dangrangto Xương Rồng", "HIEUTHUHAI NOLOVENOLIFE")
+- "title": tên bài hát chính xác
+- "artist": tên nghệ sĩ
 
-Định dạng trả về duy nhất là JSON array:
+Trả về DUY NHẤT JSON array (không có text khác):
 [
   { "query": "...", "title": "...", "artist": "..." }
 ]`;
@@ -116,33 +200,48 @@ Mỗi bài hát gồm:
   return DEFAULT_SEED_QUERIES;
 }
 
+
 /**
- * Resolve queries into playable YouTube tracks.
+ * Resolve queries into playable YouTube tracks concurrently.
+ * Runs 5 searches in parallel, 8s timeout per query.
  * Each query yields up to 2 results, targeting ~100 total tracks from 50 queries.
  */
 async function resolveQueriesToTracks(queryItems) {
-  const resolvedTracks = [];
-  const seenIds = new Set();
+  const CONCURRENCY = 5;
+  const TIMEOUT_MS = 8000;
+  const allResults = [];
 
-  for (const item of queryItems) {
+  // Helper: search one query with timeout
+  const searchOne = async (item) => {
+    const q = item.query || `${item.artist} ${item.title}`.trim();
     try {
-      const q = item.query || `${item.artist} ${item.title}`.trim();
-      const res = await searchYouTube(q, 3, 1);
-      const items = res?.items || [];
-      let added = 0;
-      for (const track of items) {
-        if (!track || !track.id || seenIds.has(track.id)) continue;
-        seenIds.add(track.id);
-        resolvedTracks.push({
-          ...track,
-          aiRecommended: true
-        });
-        added++;
-        if (added >= 2) break;
-      }
+      const res = await Promise.race([
+        searchYouTube(q, 3, 1),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), TIMEOUT_MS))
+      ]);
+      return (res?.items || []).slice(0, 2);
     } catch (err) {
-      console.warn(`[GeminiRecommend] Search error for "${item.query}":`, err.message);
+      console.warn(`[GeminiRecommend] Search error for "${q}":`, err.message);
+      return [];
     }
+  };
+
+  // Run in batches of CONCURRENCY
+  for (let i = 0; i < queryItems.length; i += CONCURRENCY) {
+    const batch = queryItems.slice(i, i + CONCURRENCY);
+    const batchResults = await Promise.allSettled(batch.map(searchOne));
+    for (const r of batchResults) {
+      if (r.status === 'fulfilled') allResults.push(...r.value);
+    }
+  }
+
+  // Deduplicate
+  const seenIds = new Set();
+  const resolvedTracks = [];
+  for (const track of allResults) {
+    if (!track || !track.id || seenIds.has(track.id)) continue;
+    seenIds.add(track.id);
+    resolvedTracks.push({ ...track, aiRecommended: true });
   }
 
   return resolvedTracks;

@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cài đặt Muzifi - Thêm vào Màn hình chính</title>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#0f0f0f">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="icon" href="/favicon.ico">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #0a0a0a;
+      color: #e5e5e5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+      overflow-x: hidden;
+    }
+
+    /* Gradient orb background */
+    body::before {
+      content: '';
+      position: fixed;
+      top: -30%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, rgba(99, 102, 241, 0.15), transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      max-width: 420px;
+      width: 100%;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Header */
+    .header {
+      text-align: center;
+      padding: 40px 0 30px;
+    }
+
+    .app-icon {
+      width: 96px;
+      height: 96px;
+      border-radius: 22px;
+      margin-bottom: 20px;
+      box-shadow: 0 8px 32px rgba(99, 102, 241, 0.3);
+      border: 2px solid rgba(255,255,255,0.08);
+    }
+
+    .app-name {
+      font-size: 2rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #818cf8, #6366f1, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 8px;
+    }
+
+    .app-desc {
+      font-size: 0.92rem;
+      color: #a1a1aa;
+      line-height: 1.5;
+    }
+
+    /* Install Card */
+    .install-card {
+      background: linear-gradient(135deg, rgba(30,30,40,0.9), rgba(20,20,30,0.95));
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 20px;
+      padding: 28px 24px;
+      margin-bottom: 16px;
+      backdrop-filter: blur(20px);
+    }
+
+    .install-card h2 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+      color: #f4f4f5;
+    }
+
+    .install-card p {
+      font-size: 0.84rem;
+      color: #a1a1aa;
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+
+    /* Buttons */
+    .btn-primary {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      padding: 16px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: white;
+      border: none;
+      border-radius: 14px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 20px rgba(99, 102, 241, 0.3);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 28px rgba(99, 102, 241, 0.4);
+    }
+
+    .btn-primary:active {
+      transform: translateY(0);
+    }
+
+    .btn-secondary {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      padding: 14px;
+      background: rgba(255,255,255,0.06);
+      color: #d4d4d8;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      font-size: 0.92rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.2s ease;
+      margin-top: 10px;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255,255,255,0.1);
+    }
+
+    /* Steps */
+    .steps {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .step {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+    }
+
+    .step-num {
+      flex-shrink: 0;
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.85rem;
+    }
+
+    .step-text {
+      padding-top: 5px;
+      font-size: 0.88rem;
+      color: #d4d4d8;
+      line-height: 1.5;
+    }
+
+    .step-text strong {
+      color: #f4f4f5;
+    }
+
+    .step-text .icon-inline {
+      display: inline-flex;
+      vertical-align: middle;
+      margin: 0 2px;
+    }
+
+    /* Share Link section */
+    .share-section {
+      background: rgba(30,30,40,0.6);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    .share-section h3 {
+      font-size: 0.95rem;
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: #f4f4f5;
+    }
+
+    .link-box {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .link-input {
+      flex: 1;
+      background: rgba(0,0,0,0.4);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      padding: 12px 14px;
+      color: #a78bfa;
+      font-size: 0.82rem;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      outline: none;
+      min-width: 0;
+    }
+
+    .btn-copy {
+      flex-shrink: 0;
+      padding: 12px 16px;
+      background: rgba(99, 102, 241, 0.15);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      border-radius: 10px;
+      color: #818cf8;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-copy:hover {
+      background: rgba(99, 102, 241, 0.25);
+    }
+
+    .btn-copy.copied {
+      background: rgba(34, 197, 94, 0.15);
+      border-color: rgba(34, 197, 94, 0.3);
+      color: #4ade80;
+    }
+
+    /* Platform badges */
+    .platform-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 8px;
+      font-size: 0.75rem;
+      color: #a1a1aa;
+      margin-right: 6px;
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      margin: 20px 0;
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      padding: 20px 0;
+      font-size: 0.78rem;
+      color: #52525b;
+    }
+
+    .footer a {
+      color: #818cf8;
+      text-decoration: none;
+    }
+
+    /* Hide iOS profile section on non-iOS */
+    .ios-only { display: none; }
+    .manual-only { display: block; }
+
+    /* Animations */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .header { animation: fadeInUp 0.5s ease; }
+    .install-card { animation: fadeInUp 0.5s ease 0.1s both; }
+    .share-section { animation: fadeInUp 0.5s ease 0.2s both; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <img src="/apple-touch-icon.png" alt="Muzifi" class="app-icon" onerror="this.src='/icon-192x192.png'">
+      <h1 class="app-name">Muzifi</h1>
+      <p class="app-desc">Nghe nhạc offline miễn phí, tải nhạc chất lượng cao & phát nhạc nền không gián đoạn</p>
+    </div>
+
+    <!-- Manual: Safari Add to Home Screen -->
+    <div class="install-card" id="manual-card">
+      <h2>Thêm vào Màn hình chính</h2>
+      <p>Làm theo các bước dưới đây để thêm Muzifi như một ứng dụng trên điện thoại.</p>
+      
+      <div class="steps" id="steps-ios">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-text">Mở link ứng dụng bằng <strong>Safari</strong> (không dùng Chrome/in-app browser)</div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-text">
+            Bấm nút <strong>Chia sẻ</strong> 
+            <span class="icon-inline">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="2">
+                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+                <polyline points="16 6 12 2 8 6"/>
+                <line x1="12" y1="2" x2="12" y2="15"/>
+              </svg>
+            </span>
+            ở thanh dưới cùng
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-text">Chọn <strong>"Thêm vào Màn hình chính"</strong></div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-text">Bấm <strong>"Thêm"</strong> — Muzifi sẽ xuất hiện như app trên Home Screen!</div>
+        </div>
+      </div>
+
+      <div class="steps" id="steps-android" style="display:none;">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-text">Mở link ứng dụng bằng <strong>Chrome</strong></div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-text">
+            Bấm <strong>⋮</strong> (menu 3 chấm) ở góc phải trên
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-text">Chọn <strong>"Thêm vào màn hình chính"</strong> hoặc <strong>"Install app"</strong></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Apple Shortcuts (iCloud) Guide -->
+    <div class="install-card ios-only" style="border-color: rgba(147, 51, 234, 0.25);">
+      <h2>Tạo Phím tắt iCloud (Apple Shortcuts)</h2>
+      <p>Muốn chia sẻ một link phím tắt <strong>icloud.com/shortcuts/...</strong> để bạn bè bấm vào là tự động thêm Muzifi vào Màn hình chính? Hãy làm theo 4 bước sau:</p>
+      
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-text">
+            Mở ứng dụng <strong>Phím tắt (Shortcuts)</strong> trên iPhone → Bấm dấu <strong>+</strong> ở góc trên.
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-text">
+            Bấm <strong>Thêm tác vụ</strong> → Tìm <strong>"Mở URL"</strong> (Open URL) → Dán đường dẫn: <code style="color:#a78bfa; background:rgba(0,0,0,0.4); padding:2px 6px; border-radius:4px; font-size:0.8rem;" id="shortcut-target-url">https://m.baokien.site/</code>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-text">
+            Chạm vào tên phím tắt ở trên cùng → Đổi tên thành <strong>Muzifi</strong>, chọn biểu tượng nốt nhạc.
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-text">
+            Bấm nút <strong>Chia sẻ</strong> (ở thanh dưới cùng của phím tắt) → Chọn <strong>Sao chép liên kết iCloud</strong> (Copy iCloud Link).<br>
+            <span style="font-size:0.8rem; color:#818cf8;">Giờ bạn đã có link <code style="color:#e0e7ff;">https://www.icloud.com/shortcuts/...</code> để gửi cho bạn bè!</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <div class="footer">
+      Muzifi &copy; 2024-2026 &bull; <a href="/">Trang chủ</a> &bull; <a href="/about">Giới thiệu</a>
+    </div>
+  </div>
+
+  <script>
+    // Detect platform
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isAndroid = /Android/.test(navigator.userAgent);
+
+    // Show/hide platform-specific content
+    if (isIOS) {
+      document.getElementById('ios-profile-card').style.display = 'block';
+      document.getElementById('steps-ios').style.display = 'flex';
+      document.getElementById('steps-android').style.display = 'none';
+    } else if (isAndroid) {
+      document.getElementById('steps-ios').style.display = 'none';
+      document.getElementById('steps-android').style.display = 'flex';
+    }
+
+
+    const shortcutUrlEl = document.getElementById('shortcut-target-url');
+    if (shortcutUrlEl) shortcutUrlEl.textContent = window.location.origin + '/';
+
+
+    // Check if already installed as PWA
+    if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
+      document.getElementById('manual-card').innerHTML = `
+        <h2>Đã cài đặt!</h2>
+        <p>Muzifi đã được thêm vào Màn hình chính. Bạn đang sử dụng phiên bản PWA.</p>
+        <a href="/" class="btn-primary" style="margin-top:16px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+          Mở Muzifi
+        </a>
+      `;
+    }
+  </script>
+</body>
+</html>

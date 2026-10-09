@@ -233,8 +233,8 @@ export function fetchYouTubeInfo(url) {
             isPlaylist: false,
             id: info.id,
             url: info.webpage_url || url,
-            title: info.title || 'Untitled',
-            channel: info.uploader || info.channel || 'YouTube',
+            title: (info.title || 'Untitled').replace(/\s*-\s*YouTube$/i, ''),
+            channel: (info.uploader || info.channel || 'Nghệ sĩ').replace(/^YouTube$/i, 'Nghệ sĩ'),
             duration: info.duration || 0,
             thumbnail: info.thumbnail || '',
             description: info.description || '',
@@ -568,8 +568,8 @@ function fallbackYtDlpSearch(query, limit = 20) {
           return {
             id,
             url: `https://www.youtube.com/watch?v=${id}`,
-            title: (entry.title || 'Untitled').replace(/^Mix\s*-\s*/i, ''),
-            channel: entry.uploader || entry.channel || 'YouTube',
+            title: (entry.title || 'Untitled').replace(/^Mix\s*-\s*/i, '').replace(/\s*-\s*YouTube$/i, ''),
+            channel: (entry.uploader || entry.channel || 'Nghệ sĩ').replace(/^YouTube$/i, 'Nghệ sĩ'),
             duration: entry.duration || 0,
             views: entry.view_count || null,
             viewsText: entry.view_count ? `${entry.view_count.toLocaleString()} lượt xem` : '',
@@ -708,8 +708,8 @@ export async function searchYouTube(query, limit = 20, page = 1) {
           const videoId = normalizeYouTubeId(r.videoId);
           if (videoId && videoId.length === 11 && !seen.has(videoId)) {
             seen.add(videoId);
-            const title = (r.title?.runs?.[0]?.text || r.title?.simpleText || 'Untitled').replace(/^Mix\s*-\s*/i, '');
-            const channel = r.ownerText?.runs?.[0]?.text || r.shortBylineText?.runs?.[0]?.text || 'YouTube';
+            const title = (r.title?.runs?.[0]?.text || r.title?.simpleText || 'Untitled').replace(/^Mix\s*-\s*/i, '').replace(/\s*-\s*YouTube$/i, '');
+            const channel = (r.ownerText?.runs?.[0]?.text || r.shortBylineText?.runs?.[0]?.text || 'Nghệ sĩ').replace(/^YouTube$/i, 'Nghệ sĩ');
             const durationText = r.lengthText?.simpleText || r.lengthText?.runs?.[0]?.text || '';
             let duration = 0;
             if (durationText) {
@@ -1441,8 +1441,8 @@ export async function getRelatedTracks(rawVideoId, limit = 20) {
     const l = r.lockupViewModel;
     if (l && l.contentId) {
       const id = normalizeYouTubeId(l.contentId);
-      const title = (l.metadata?.lockupMetadataViewModel?.title?.content || '').replace(/^Mix\s*-\s*/i, '');
-      const channel = l.metadata?.lockupMetadataViewModel?.metadata?.contentMetadataViewModel?.metadataRows?.[0]?.metadataParts?.[0]?.text?.content || 'YouTube';
+      const title = (l.metadata?.lockupMetadataViewModel?.title?.content || '').replace(/^Mix\s*-\s*/i, '').replace(/\s*-\s*YouTube$/i, '');
+      const channel = (l.metadata?.lockupMetadataViewModel?.metadata?.contentMetadataViewModel?.metadataRows?.[0]?.metadataParts?.[0]?.text?.content || 'Nghệ sĩ').replace(/^YouTube$/i, 'Nghệ sĩ');
       const thumbs = l.contentImage?.thumbnailViewModel?.image?.sources 
         || l.contentImage?.collectionThumbnailViewModel?.primaryThumbnail?.thumbnailViewModel?.image?.sources || [];
       const thumbnail = thumbs[thumbs.length - 1]?.url || `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
@@ -1469,8 +1469,8 @@ export async function getRelatedTracks(rawVideoId, limit = 20) {
     const cvr = r.compactVideoRenderer;
     if (cvr && cvr.videoId) {
       const id = normalizeYouTubeId(cvr.videoId);
-      const title = (cvr.title?.simpleText || cvr.title?.runs?.map(x => x.text).join('') || '').replace(/^Mix\s*-\s*/i, '');
-      const channel = cvr.shortBylineText?.runs?.[0]?.text || 'YouTube';
+      const title = (cvr.title?.simpleText || cvr.title?.runs?.map(x => x.text).join('') || '').replace(/^Mix\s*-\s*/i, '').replace(/\s*-\s*YouTube$/i, '');
+      const channel = (cvr.shortBylineText?.runs?.[0]?.text || 'Nghệ sĩ').replace(/^YouTube$/i, 'Nghệ sĩ');
       const thumbs = cvr.thumbnail?.thumbnails || [];
       const thumbnail = thumbs[thumbs.length - 1]?.url || `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
       const durationText = cvr.lengthText?.simpleText || '';
@@ -1499,8 +1499,8 @@ export async function getRelatedTracks(rawVideoId, limit = 20) {
       const v = item.playlistPanelVideoRenderer;
       if (!v || !v.videoId) continue;
       const id = normalizeYouTubeId(v.videoId);
-      const title = (v.title?.runs?.map(r => r.text).join('') || 'Untitled').replace(/^Mix\s*-\s*/i, '');
-      const artist = v.shortBylineText?.runs?.map(r => r.text).join('') || v.longBylineText?.runs?.[0]?.text || 'YouTube';
+      const title = (v.title?.runs?.map(r => r.text).join('') || 'Untitled').replace(/^Mix\s*-\s*/i, '').replace(/\s*-\s*YouTube$/i, '');
+      const artist = (v.shortBylineText?.runs?.map(r => r.text).join('') || v.longBylineText?.runs?.[0]?.text || 'Nghệ sĩ').replace(/^YouTube$/i, 'Nghệ sĩ');
       const durationText = v.lengthText?.runs?.[0]?.text || '';
       let durationSec = 0;
       if (durationText) {

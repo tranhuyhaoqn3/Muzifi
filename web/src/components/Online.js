@@ -725,7 +725,10 @@ export class OnlineView {
     const cardsHtml = uniqueItems.map(item => {
       const durStr = this.player.formatTime(item.duration || 0);
       const viewsStr = item.viewsText || this.formatViews(item.views);
-      const initial = (item.channel || 'Y').trim().charAt(0).toUpperCase();
+      const rawChannel = (item.channel || '').trim();
+      const channelDisplay = (!rawChannel || /^youtube$/i.test(rawChannel)) ? 'Nghệ sĩ' : rawChannel.replace(/\byoutube\b/gi, '').trim() || 'Nghệ sĩ';
+      const titleDisplay = (item.title || 'Untitled').replace(/\s*-\s*YouTube$/i, '').trim();
+      const initial = channelDisplay.charAt(0).toUpperCase() || 'M';
 
       return `
         <div class="yt-video-card" data-id="${item.id}">
@@ -742,17 +745,17 @@ export class OnlineView {
           </div>
 
           <div class="yt-card-info-row">
-            <div class="yt-channel-avatar" title="${this.escapeHtml(item.channel || '')}">
+            <div class="yt-channel-avatar" title="${this.escapeHtml(channelDisplay)}">
               ${initial}
             </div>
 
             <div class="yt-card-meta-col">
-              <h3 class="yt-card-title" title="${this.escapeHtml(item.title)}">
-                ${this.escapeHtml(item.title)}
+              <h3 class="yt-card-title" title="${this.escapeHtml(titleDisplay)}">
+                ${this.escapeHtml(titleDisplay)}
               </h3>
               
               <div class="yt-card-channel-name">
-                <span>${this.escapeHtml(item.channel || '')}</span>
+                <span>${this.escapeHtml(channelDisplay)}</span>
               </div>
 
               <div class="yt-card-stats">
@@ -767,6 +770,15 @@ export class OnlineView {
                     <circle cx="18" cy="16" r="3" />
                   </svg>
                   <span>Nghe</span>
+                </button>
+                <button class="yt-action-btn btn-share-online" data-id="${item.id}" title="Chia sẻ bài hát" style="color:var(--text-muted);padding:0 8px;">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="18" cy="5" r="3" />
+                    <circle cx="6" cy="12" r="3" />
+                    <circle cx="18" cy="19" r="3" />
+                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                  </svg>
                 </button>
                 <button class="yt-action-btn yt-action-download btn-download-online" data-id="${item.id}" title="Tải về máy">
                   <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
@@ -813,6 +825,17 @@ export class OnlineView {
       audioBtn?.addEventListener('click', (e) => {
         e.stopPropagation();
         this.playOnline(item, 'audio', isSearchResult ? null : allContextItems, isSearchResult);
+      });
+
+      const shareBtn = card.querySelector('.btn-share-online');
+      shareBtn?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.player?.shareTrack({
+          ...item,
+          youtubeId: item.id,
+          youtube_id: item.id,
+          isOnline: true
+        });
       });
 
       const dlBtn = card.querySelector('.btn-download-online');
@@ -944,11 +967,15 @@ export class OnlineView {
     // When playing an individual track from home feed, search or trending:
     // Seed the playback with this single track and immediately launch Spotify Song Radio
     // so that Up Next is dynamically generated based on this exact song's artist, mood & genre!
+    const rawArtist = (item.channel || item.artist || '').trim();
+    const cleanArtist = (!rawArtist || /^youtube$/i.test(rawArtist)) ? 'Nghệ sĩ' : rawArtist.replace(/\byoutube\b/gi, '').trim() || 'Nghệ sĩ';
+    const cleanTitle = (item.title || 'Bản nhạc trực tuyến').replace(/\s*-\s*YouTube$/i, '').trim();
+
     const singleTrack = {
       id: `yt_${item.id}_${mediaType}`,
       youtubeId: item.id,
-      title: item.title,
-      artist: item.channel || item.artist || 'Nghệ sĩ',
+      title: cleanTitle,
+      artist: cleanArtist,
       album: 'Radio Trực Tuyến',
       duration_sec: item.duration || 0,
       media_type: mediaType,

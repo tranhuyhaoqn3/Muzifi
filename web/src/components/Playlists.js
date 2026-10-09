@@ -4,6 +4,7 @@ import { api } from '../api.js';
 import { icons } from './icons.js';
 import { showAddToPlaylistModal, showAddTracksToPlaylistModal } from './PlaylistModal.js';
 import { animateFlyToCorner } from './flyAnim.js';
+import { getAllOfflineTracks } from '../offlineStorage.js';
 
 export class PlaylistsView {
   constructor(playerEngine) {
@@ -63,66 +64,71 @@ export class PlaylistsView {
         </div>
       `).join('');
     }
+    let playlists = [];
     try {
-      const playlists = await api.playlists.list();
-      store.set({ playlists });
-
-      if (playlists.length === 0) {
-        if (headerCreateBtn) headerCreateBtn.style.display = 'none';
-        listEl.innerHTML = `
-          <div class="empty-state" style="grid-column:1/-1;padding:40px 16px;text-align:center;">
-            <div class="empty-icon" style="margin:0 auto 12px;opacity:0.6;">${icons.queue}</div>
-            <p class="empty-title" style="font-size:1.05rem;font-weight:600;margin-bottom:6px;">Chưa có danh sách phát nào</p>
-            <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:16px;">Tạo playlist riêng hoặc dán liên kết để nghe trực tiếp & tải offline.</p>
-            <button id="btn-empty-create-pl" class="btn-primary" style="min-height:38px;padding:0 18px;border-radius:20px;font-size:0.86rem;font-weight:600;display:inline-flex;align-items:center;gap:6px;">
-              ${icons.plus} <span>Tạo playlist</span>
-            </button>
-          </div>
-        `;
-        const emptyBtn = listEl.querySelector('#btn-empty-create-pl');
-        if (emptyBtn) {
-          emptyBtn.addEventListener('click', () => this.showCreatePlaylistModal());
-        }
-        return;
+      playlists = await api.playlists.list();
+    } catch (err) {
+      try {
+        playlists = JSON.parse(localStorage.getItem('muzifi_local_playlists') || '[]');
+      } catch (e) {
+        playlists = [];
       }
+    }
+    store.set({ playlists });
 
-      if (headerCreateBtn) headerCreateBtn.style.display = 'inline-flex';
+    if (playlists.length === 0) {
+      if (headerCreateBtn) headerCreateBtn.style.display = 'none';
+      listEl.innerHTML = `
+        <div class="empty-state" style="grid-column:1/-1;padding:40px 16px;text-align:center;">
+          <div class="empty-icon" style="margin:0 auto 12px;opacity:0.6;">${icons.queue}</div>
+          <p class="empty-title" style="font-size:1.05rem;font-weight:600;margin-bottom:6px;">Chưa có danh sách phát nào</p>
+          <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:16px;">Tạo playlist riêng để sắp xếp các bài hát yêu thích.</p>
+          <button id="btn-empty-create-pl" class="btn-primary" style="min-height:38px;padding:0 18px;border-radius:20px;font-size:0.86rem;font-weight:600;display:inline-flex;align-items:center;gap:6px;">
+            ${icons.plus} <span>Tạo playlist</span>
+          </button>
+        </div>
+      `;
+      const emptyBtn = listEl.querySelector('#btn-empty-create-pl');
+      if (emptyBtn) {
+        emptyBtn.addEventListener('click', () => this.showCreatePlaylistModal());
+      }
+      return;
+    }
 
-      listEl.innerHTML = playlists.map(pl => `
-        <div class="playlist-card" data-id="${pl.id}">
-          <div class="playlist-thumb-box">
-            <img class="playlist-thumb-img" src="/api/playlists/${pl.id}/thumb?t=${encodeURIComponent(pl.updated_at || '')}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
-            <div class="playlist-thumb-fallback" style="display:none;width:100%;height:100%;align-items:center;justify-content:center;">
-              ${icons.queue}
-            </div>
-          </div>
-          <div class="playlist-card-meta">
-            <div class="playlist-card-title">${this.escapeHtml(pl.name)}</div>
-            <div class="playlist-card-sub">${pl.track_count || 0} bài hát</div>
-          </div>
-          <div class="playlist-card-actions">
-            <button class="icon-btn pl-opt-btn" data-id="${pl.id}" title="Tùy chọn">${icons.more}</button>
+    if (headerCreateBtn) headerCreateBtn.style.display = 'inline-flex';
+
+    listEl.innerHTML = playlists.map(pl => `
+      <div class="playlist-card" data-id="${pl.id}">
+        <div class="playlist-thumb-box">
+          <img class="playlist-thumb-img" src="${pl.thumbUrl || `/api/playlists/${pl.id}/thumb?t=${encodeURIComponent(pl.updated_at || '')}`}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+          <div class="playlist-thumb-fallback" style="display:none;width:100%;height:100%;align-items:center;justify-content:center;">
+            ${icons.queue}
           </div>
         </div>
-      `).join('');
+        <div class="playlist-card-meta">
+          <div class="playlist-card-title">${this.escapeHtml(pl.name)}</div>
+          <div class="playlist-card-sub">${(pl.tracks ? pl.tracks.length : pl.track_count) || 0} bài hát</div>
+        </div>
+        <div class="playlist-card-actions">
+          <button class="icon-btn pl-opt-btn" data-id="${pl.id}" title="Tùy chọn">${icons.more}</button>
+        </div>
+      </div>
+    `).join('');
 
-      listEl.querySelectorAll('.playlist-card').forEach(el => {
-        el.addEventListener('click', (e) => {
-          if (e.target.closest('.playlist-card-actions')) return;
-          this.render(el.dataset.id);
-        });
+    listEl.querySelectorAll('.playlist-card').forEach(el => {
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('.playlist-card-actions')) return;
+        this.render(el.dataset.id);
       });
+    });
 
-      listEl.querySelectorAll('.pl-opt-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const pl = playlists.find(p => p.id === btn.dataset.id);
-          if (pl) this.showPlaylistMenu(pl);
-        });
+    listEl.querySelectorAll('.pl-opt-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const pl = playlists.find(p => p.id === btn.dataset.id);
+        if (pl) this.showPlaylistMenu(pl);
       });
-    } catch (err) {
-      listEl.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">Lỗi: ${err.message}</div>`;
-    }
+    });
   }
 
   async renderPlaylistDetail(id) {
@@ -191,8 +197,27 @@ export class PlaylistsView {
       this.render();
     });
 
+    let pl = null;
     try {
-      const pl = await api.playlists.get(id);
+      pl = await api.playlists.get(id);
+    } catch (err) {
+      const list = JSON.parse(localStorage.getItem('muzifi_local_playlists') || '[]');
+      pl = list.find(p => p.id === id);
+      if (pl) {
+        if (!pl.tracks) pl.tracks = [];
+        if (pl.track_ids && pl.track_ids.length > 0) {
+          const allLocal = await getAllOfflineTracks();
+          pl.tracks = pl.track_ids.map(tId => allLocal.find(t => t.id === tId)).filter(Boolean);
+        }
+      }
+    }
+
+    if (!pl) {
+      document.getElementById('playlist-tracks-list').innerHTML = `<div class="empty-state">Không tìm thấy danh sách phát</div>`;
+      return;
+    }
+
+    try {
       document.getElementById('pl-detail-name').textContent = pl.name;
       document.getElementById('pl-detail-count').textContent = `${(pl.tracks || []).length} bài hát • Kéo để đổi thứ tự`;
 
@@ -289,7 +314,7 @@ export class PlaylistsView {
         </div>
 
         <div class="track-thumb-wrap">
-          <img class="track-thumb" src="/api/tracks/${track.id}/thumb" alt="Cover" loading="lazy">
+          <img class="track-thumb" src="${track.thumbBlob ? URL.createObjectURL(track.thumbBlob) : (track.thumbDataUrl || `/api/tracks/${track.id}/thumb`)}" onerror="this.onerror=null;this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'%236366f1\'><path d=\'M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z\'/></svg>'" alt="Cover" loading="lazy">
         </div>
 
         <div class="track-meta">
@@ -355,7 +380,7 @@ export class PlaylistsView {
     });
   }
 
-  showCreatePlaylistModal(initialTab = 'custom') {
+  showCreatePlaylistModal() {
     const modalContainer = document.getElementById('modal-container');
     modalContainer.innerHTML = `
       <div class="modal-overlay" id="create-pl-modal">
@@ -365,22 +390,6 @@ export class PlaylistsView {
             <button class="icon-btn" id="modal-close">${icons.x}</button>
           </div>
           <div class="modal-body" style="padding:14px 16px;">
-            <!-- Segmented control: Tạo mới | Từ liên kết -->
-            <div style="display:flex;gap:6px;background:var(--surface-variant);padding:4px;border-radius:var(--radius-md);margin-bottom:16px;">
-              <button id="pl-tab-custom" class="pill-btn active" style="flex:1;text-align:center;min-height:34px;font-size:0.86rem;font-weight:600;border-radius:var(--radius-sm);background:var(--bg-elevated);color:var(--text-primary);box-shadow:0 1px 3px rgba(0,0,0,0.2);">
-                Tạo mới
-              </button>
-              <button id="pl-tab-yt" class="pill-btn" style="flex:1;text-align:center;min-height:34px;font-size:0.86rem;font-weight:600;border-radius:var(--radius-sm);display:inline-flex;align-items:center;justify-content:center;gap:6px;color:var(--text-secondary);background:transparent;">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-                </svg>
-                Từ liên kết
-              </button>
-            </div>
-
-            <!-- Tab 1: Tạo playlist mới -->
-            <div id="pl-panel-custom">
               <div class="form-group" style="margin-bottom:16px;">
                 <label class="form-label">Tên danh sách</label>
                 <input type="text" id="pl-name-input" class="form-input" placeholder="Ví dụ: Nhạc chill, Yêu thích..." autofocus>
@@ -389,50 +398,6 @@ export class PlaylistsView {
                 <button class="pill-btn" id="modal-cancel">Hủy</button>
                 <button class="btn-primary" id="modal-submit" style="min-height:38px;padding:0 18px;border-radius:20px;font-weight:600;">Tạo playlist</button>
               </div>
-            </div>
-
-            <!-- Tab 2: Nhập từ liên kết -->
-            <div id="pl-panel-yt" style="display:none;">
-              <p style="font-size:0.84rem;color:var(--text-muted);margin:0 0 10px;">
-                Dán liên kết danh sách phát hoặc video để nghe trực tuyến hoặc tải về máy.
-              </p>
-              <div class="form-group" style="display:flex;gap:8px;margin-bottom:12px;">
-                <input type="text" id="yt-playlist-url-input" class="form-input" style="flex:1;" placeholder="https://...">
-                <button class="btn-primary" id="btn-fetch-yt-pl" style="white-space:nowrap;min-height:38px;padding:0 14px;border-radius:18px;">
-                  Đọc link
-                </button>
-              </div>
-
-              <div id="yt-playlist-loading" style="display:none;text-align:center;padding:16px 0;color:var(--text-secondary);font-size:0.86rem;">
-                <div class="skeleton-shimmer" style="width:36px;height:36px;border-radius:50%;margin:0 auto 8px;"></div>
-                Đang đọc danh sách phát...
-              </div>
-
-              <div id="yt-playlist-error" style="display:none;color:var(--danger, #ef4444);font-size:0.84rem;margin-bottom:10px;"></div>
-
-              <div id="yt-playlist-preview" style="display:none;">
-                <div style="padding:10px 12px;background:var(--surface-variant);border-radius:var(--radius-md);margin-bottom:10px;">
-                  <div id="yt-pl-title" style="font-weight:700;font-size:0.92rem;color:var(--text-primary);margin-bottom:2px;"></div>
-                  <div id="yt-pl-meta" style="font-size:0.8rem;color:var(--text-muted);"></div>
-                </div>
-
-                <div id="yt-pl-tracklist" style="max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;margin-bottom:12px;padding-right:4px;"></div>
-
-                <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
-                  <button class="btn-secondary" id="btn-stream-yt-pl" style="min-height:36px;padding:0 14px;border-radius:18px;display:inline-flex;align-items:center;gap:6px;font-size:0.85rem;">
-                    ${icons.play} Nghe online
-                  </button>
-                  <button class="btn-primary" id="btn-download-yt-pl" style="min-height:36px;padding:0 14px;border-radius:18px;display:inline-flex;align-items:center;gap:6px;font-size:0.85rem;font-weight:600;">
-                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                      <polyline points="7 10 12 15 17 10" />
-                      <line x1="12" y1="15" x2="12" y2="3" />
-                    </svg>
-                    Lưu về offline
-                  </button>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -443,39 +408,7 @@ export class PlaylistsView {
     modal.querySelector('#modal-cancel')?.addEventListener('click', () => modal.remove());
     modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
 
-    // Tabs switching
-    const tabCustom = modal.querySelector('#pl-tab-custom');
-    const tabYt = modal.querySelector('#pl-tab-yt');
-    const panelCustom = modal.querySelector('#pl-panel-custom');
-    const panelYt = modal.querySelector('#pl-panel-yt');
 
-    const selectTab = (tab) => {
-      if (tab === 'custom') {
-        tabCustom.style.background = 'var(--bg-elevated)';
-        tabCustom.style.color = 'var(--text-primary)';
-        tabCustom.style.boxShadow = '0 1px 3px rgba(0,0,0,0.2)';
-        tabYt.style.background = 'transparent';
-        tabYt.style.color = 'var(--text-secondary)';
-        tabYt.style.boxShadow = 'none';
-        panelCustom.style.display = 'block';
-        panelYt.style.display = 'none';
-        modal.querySelector('#pl-name-input')?.focus();
-      } else {
-        tabYt.style.background = 'var(--bg-elevated)';
-        tabYt.style.color = 'var(--text-primary)';
-        tabYt.style.boxShadow = '0 1px 3px rgba(0,0,0,0.2)';
-        tabCustom.style.background = 'transparent';
-        tabCustom.style.color = 'var(--text-secondary)';
-        tabCustom.style.boxShadow = 'none';
-        panelCustom.style.display = 'none';
-        panelYt.style.display = 'block';
-        modal.querySelector('#yt-playlist-url-input')?.focus();
-      }
-    };
-
-    tabCustom.addEventListener('click', () => selectTab('custom'));
-    tabYt.addEventListener('click', () => selectTab('yt'));
-    if (initialTab === 'yt') selectTab('yt');
 
     // Create Custom Playlist submit
     modal.querySelector('#modal-submit').addEventListener('click', async () => {
@@ -487,7 +420,19 @@ export class PlaylistsView {
         modal.remove();
         await this.render(created.id);
       } catch (err) {
-        alert('Lỗi tạo playlist: ' + err.message);
+        const localPl = {
+          id: `local_pl_${Date.now()}`,
+          name: name,
+          track_count: 0,
+          tracks: [],
+          track_ids: [],
+          updated_at: new Date().toISOString()
+        };
+        const list = JSON.parse(localStorage.getItem('muzifi_local_playlists') || '[]');
+        list.unshift(localPl);
+        localStorage.setItem('muzifi_local_playlists', JSON.stringify(list));
+        modal.remove();
+        await this.render(localPl.id);
       }
     });
 
@@ -497,109 +442,7 @@ export class PlaylistsView {
       }
     });
 
-    // YouTube Import Logic
-    const urlInput = modal.querySelector('#yt-playlist-url-input');
-    const fetchBtn = modal.querySelector('#btn-fetch-yt-pl');
-    const previewEl = modal.querySelector('#yt-playlist-preview');
-    const loadingEl = modal.querySelector('#yt-playlist-loading');
-    const errorEl = modal.querySelector('#yt-playlist-error');
 
-    let loadedInfo = null;
-
-    const doFetch = async () => {
-      const url = urlInput.value.trim();
-      if (!url) return;
-      errorEl.style.display = 'none';
-      previewEl.style.display = 'none';
-      loadingEl.style.display = 'block';
-      fetchBtn.disabled = true;
-
-      try {
-        const info = await api.youtube.info(url);
-        loadingEl.style.display = 'none';
-        fetchBtn.disabled = false;
-
-        const items = info.items || (info.isPlaylist ? [] : [info]);
-        if (!items || items.length === 0) {
-          throw new Error('Không tìm thấy bài hát nào trong playlist này');
-        }
-
-        loadedInfo = {
-          title: info.title || 'Danh sách phát',
-          channel: info.channel || '',
-          items
-        };
-
-        modal.querySelector('#yt-pl-title').textContent = loadedInfo.title;
-        modal.querySelector('#yt-pl-meta').textContent = `${loadedInfo.channel ? loadedInfo.channel + ' • ' : ''}${items.length} bài hát`;
-
-        const tracklistEl = modal.querySelector('#yt-pl-tracklist');
-        tracklistEl.innerHTML = items.map((it, idx) => `
-          <div style="display:flex;align-items:center;gap:8px;font-size:0.82rem;padding:4px 0;border-bottom:1px solid var(--border-color);">
-            <span style="color:var(--text-muted);min-width:20px;">${idx + 1}</span>
-            <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-              <span style="font-weight:500;color:var(--text-primary);">${this.escapeHtml(it.title)}</span>
-              <span style="color:var(--text-muted);margin-left:6px;">${this.escapeHtml(it.channel || '')}</span>
-            </div>
-          </div>
-        `).join('');
-
-        previewEl.style.display = 'block';
-      } catch (err) {
-        loadingEl.style.display = 'none';
-        fetchBtn.disabled = false;
-        errorEl.textContent = 'Lỗi: ' + (err.message || 'Không thể đọc playlist này');
-        errorEl.style.display = 'block';
-      }
-    };
-
-    fetchBtn.addEventListener('click', doFetch);
-    urlInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') doFetch();
-    });
-
-    modal.querySelector('#btn-stream-yt-pl').addEventListener('click', () => {
-      if (!loadedInfo || !loadedInfo.items.length) return;
-      const onlineTracks = loadedInfo.items.map(it => ({
-        id: `yt_${it.id}_audio`,
-        youtubeId: it.id,
-        title: it.title,
-        artist: it.channel || 'Nghệ sĩ',
-        album: loadedInfo.title || 'Danh sách phát',
-        duration_sec: it.duration || 0,
-        media_type: 'audio',
-        isOnline: true,
-        thumbnail_url: it.thumbnail
-      }));
-      store.set({ queue: onlineTracks, originalQueue: onlineTracks, isPlaylistMode: false });
-      this.player.loadOnlineTrack(onlineTracks[0], true);
-      modal.remove();
-      this.player?.showToast(`Đang phát online playlist "${loadedInfo.title}" (${onlineTracks.length} bài)`);
-    });
-
-    modal.querySelector('#btn-download-yt-pl').addEventListener('click', async () => {
-      if (!loadedInfo || !loadedInfo.items.length) return;
-      const btn = modal.querySelector('#btn-download-yt-pl');
-      animateFlyToCorner(btn, { thumbnail: loadedInfo.thumbnail });
-      btn.disabled = true;
-      btn.textContent = 'Đang bắt đầu tải...';
-      try {
-        await api.youtube.download({
-          items: loadedInfo.items,
-          createPlaylist: true,
-          playlistName: loadedInfo.title || 'Danh sách phát',
-          mediaType: 'audio',
-          quality: '720p'
-        });
-        modal.remove();
-        this.player?.showToast(`Đã thêm ${loadedInfo.items.length} bài hát vào hàng đợi tải offline cho playlist "${loadedInfo.title}"!`, 4000);
-        await this.renderPlaylistsOverview();
-      } catch (err) {
-        btn.disabled = false;
-        btn.textContent = 'Lưu về offline';
-        alert('Lỗi tải playlist: ' + err.message);
-      }
-    });
   }
 
   showPlaylistMenu(pl) {

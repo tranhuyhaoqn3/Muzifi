@@ -6,7 +6,7 @@ const distDir = path.resolve('dist');
 const serverPublicDir = path.resolve('server/public');
 const webDir = path.resolve('web');
 
-for (const file of ['about.html', 'sw.js']) {
+for (const file of ['about.html', 'install.html', 'sw.js']) {
   const src = path.join(webDir, file);
   if (fs.existsSync(src)) {
     fs.copyFileSync(src, path.join(distDir, file));

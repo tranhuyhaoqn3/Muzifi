@@ -18,6 +18,7 @@ class StateStore {
       queue: [],
       originalQueue: [],
       isPlaying: false,
+      isBuffering: false,
       currentTime: 0,
       duration: 0,
       playbackRate: 1.0,

@@ -32,6 +32,14 @@ class App {
 
     // Listen for unauthorized events to display Google login screen
     setUnauthorizedHandler(() => {
+      const isStandalone = Boolean(
+        window.Capacitor ||
+        window.__muzifi_guest_mode ||
+        window.location.protocol === 'capacitor:' ||
+        window.location.protocol === 'file:' ||
+        localStorage.getItem('muzifi_standalone_mode') === 'true'
+      );
+      if (isStandalone) return;
       this.showGoogleLoginScreen();
     });
 
@@ -83,9 +91,14 @@ class App {
       this.preCacheLibraryForOffline();
     });
 
-    // Extract auth_token from URL query if present (from Google OAuth callback redirect)
+    // Extract query parameters from URL
+    let sharedTrackId = null;
+    let sharedYtId = null;
     try {
       const urlParams = new URLSearchParams(window.location.search);
+      sharedTrackId = urlParams.get('track') || urlParams.get('play');
+      sharedYtId = urlParams.get('v') || urlParams.get('yt');
+
       const authToken = urlParams.get('auth_token');
       if (authToken) {
         localStorage.setItem('muzifi_token', authToken);
@@ -100,10 +113,39 @@ class App {
       }
     } catch (e) {}
 
-    // 7. Check user authentication (Mandatory Google Login)
+    // Fast path: If visitor has a shared link and has NO stored token, render guest player IMMEDIATELY without waiting for auth API!
+    const storedToken = localStorage.getItem('muzifi_token') || localStorage.getItem('metube_token');
+    if ((sharedTrackId || sharedYtId) && !storedToken) {
+      await this.playSharedTrackGuest(sharedTrackId, sharedYtId);
+      return;
+    }
+
+    // 7. Check user authentication (Automatically bypassed in iOS app or standalone/offline mode)
+    const isStandalone = Boolean(
+      window.Capacitor ||
+      window.location.protocol === 'capacitor:' ||
+      window.location.protocol === 'file:' ||
+      window.navigator.standalone ||
+      window.matchMedia('(display-mode: standalone)').matches ||
+      localStorage.getItem('muzifi_standalone_mode') === 'true'
+    );
+
+    if (isStandalone) {
+      this.currentUser = { name: 'Người dùng', isGoogle: true };
+      window.__muzifi_guest_mode = true;
+      this.renderUserHeaderButton();
+      await this.onLoginSuccess();
+      return;
+    }
+
     try {
       const auth = await api.auth.check();
       if (!auth.authenticated || !auth.user || !auth.user.isGoogle) {
+        // If guest opened a shared song link, let them listen directly!
+        if (sharedTrackId || sharedYtId) {
+          await this.playSharedTrackGuest(sharedTrackId, sharedYtId);
+          return;
+        }
         this.showGoogleLoginScreen(auth.googleConfigured);
         return;
       }
@@ -113,24 +155,39 @@ class App {
       } catch (e) {}
       this.renderUserHeaderButton();
       await this.onLoginSuccess();
+
+      // If authenticated user opened a shared song link, start playing it immediately
+      if (sharedTrackId) {
+        this.playSharedTrack(sharedTrackId);
+      } else if (sharedYtId) {
+        this.playSharedOnlineTrack(sharedYtId);
+      }
     } catch (err) {
-      // If offline and user was previously logged in, allow access to offline library!
-      const token = localStorage.getItem('muzifi_token') || localStorage.getItem('metube_token');
-      if (!navigator.onLine && token) {
-        let savedUser = null;
-        try {
-          savedUser = JSON.parse(localStorage.getItem('muzifi_user') || localStorage.getItem('metube_user'));
-        } catch (e) {}
-        this.currentUser = savedUser || { name: 'Người dùng offline', isGoogle: true };
-        this.renderUserHeaderButton();
-        await this.onLoginSuccess();
+      // If guest opened a shared song link and API check failed
+      if (sharedTrackId || sharedYtId) {
+        await this.playSharedTrackGuest(sharedTrackId, sharedYtId);
         return;
       }
-      this.showGoogleLoginScreen();
+
+      // If server is unreachable or offline, allow instant standalone access!
+      this.currentUser = { name: 'Người dùng', isGoogle: true };
+      window.__muzifi_guest_mode = true;
+      this.renderUserHeaderButton();
+      await this.onLoginSuccess();
+      return;
     }
   }
 
   showGoogleLoginScreen(isConfigured = true) {
+    const isStandalone = Boolean(
+      window.Capacitor ||
+      window.__muzifi_guest_mode ||
+      window.location.protocol === 'capacitor:' ||
+      window.location.protocol === 'file:' ||
+      localStorage.getItem('muzifi_standalone_mode') === 'true'
+    );
+    if (isStandalone) return;
+
     if (document.getElementById('google-login-gate')) return;
 
     if (this.player) this.player.pause();
@@ -154,8 +211,12 @@ class App {
     `;
 
     gate.innerHTML = `
-      <div style="background: rgba(17, 24, 39, 0.88); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 28px; padding: 44px 32px; max-width: 380px; width: 100%; text-align: center; box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(99, 102, 241, 0.12); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);">
+      <div style="position: relative; background: rgba(17, 24, 39, 0.88); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 28px; padding: 44px 32px; max-width: 380px; width: 100%; text-align: center; box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(99, 102, 241, 0.12); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);">
         
+        ${window.__muzifi_guest_mode ? `
+          <button id="btn-gate-close" style="position: absolute; top: 16px; right: 16px; background: rgba(255,255,255,0.08); border: none; border-radius: 50%; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; color: #a1a1aa; cursor: pointer; font-size: 1.1rem;" title="Đóng">✕</button>
+        ` : ''}
+
         <!-- App Logo Only -->
         <div style="margin: 0 auto 36px; display: flex; align-items: center; justify-content: center;">
           <img src="/logo.png" alt="Logo" style="max-width: 180px; max-height: 90px; object-fit: contain; filter: drop-shadow(0 8px 20px rgba(0,0,0,0.45));">
@@ -172,6 +233,16 @@ class App {
           <span>Tiếp tục với Google</span>
         </button>
 
+        <!-- Install PWA Button -->
+        <a href="/install" id="btn-gate-install" style="margin-top: 14px; width: 100%; min-height: 48px; background: rgba(255, 255, 255, 0.08); color: #e2e8f0; font-weight: 600; font-size: 0.92rem; border: 1px solid rgba(255, 255, 255, 0.16); border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 9px; text-decoration: none; transition: all 0.2s ease;" onmouseover="this.style.background='rgba(255,255,255,0.14)'" onmouseout="this.style.background='rgba(255,255,255,0.08)'">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          <span>Cài đặt</span>
+        </a>
+
         <!-- Legal Links -->
         <div style="margin-top: 24px; font-size: 0.8rem; color: var(--text-muted, #94a3b8); display: flex; justify-content: center; align-items: center; gap: 14px;">
           <a href="/privacy" target="_blank" style="color: #94a3b8; text-decoration: none; transition: color 0.15s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#94a3b8'">Chính sách bảo mật</a>
@@ -182,6 +253,10 @@ class App {
     `;
 
     document.body.appendChild(gate);
+
+    document.getElementById('btn-gate-close')?.addEventListener('click', () => {
+      gate.remove();
+    });
 
     document.getElementById('btn-gate-google-signin')?.addEventListener('click', async () => {
       const btn = document.getElementById('btn-gate-google-signin');
@@ -203,7 +278,14 @@ class App {
   async onLoginSuccess() {
     store.set({ isAuthenticated: true });
     this.switchTab('library');
-    if (navigator.onLine) {
+    const isStandalone = Boolean(
+      window.Capacitor ||
+      window.__muzifi_guest_mode ||
+      window.location.protocol === 'capacitor:' ||
+      window.location.protocol === 'file:' ||
+      localStorage.getItem('muzifi_standalone_mode') === 'true'
+    );
+    if (!isStandalone && navigator.onLine) {
       this.startSSE();
       this.startJobsPoller();
       api.jobs.list().then(jobs => {
@@ -214,7 +296,7 @@ class App {
     await this.restorePlayerState();
 
     // Background: pre-cache all library tracks for offline playback if online
-    if (navigator.onLine) {
+    if (!isStandalone && navigator.onLine) {
       this.preCacheLibraryForOffline();
     }
   }
@@ -759,6 +841,327 @@ class App {
       this.onlineView.render();
     }
     await this.restorePlayerState();
+  }
+
+  async playSharedTrackGuest(trackId, ytId) {
+    window.__muzifi_guest_mode = true;
+    document.body.classList.add('shared-guest-view');
+
+    // Show skeleton immediately — no blank black screen
+    this._renderSharedSkeleton(ytId);
+
+    let track = null;
+    if (trackId) {
+      try {
+        const res = await fetch(`/api/tracks/${encodeURIComponent(trackId)}/shared`);
+        if (res.ok) {
+          const data = await res.json();
+          track = data.track;
+        }
+      } catch (e) {
+        console.warn('Failed to fetch shared track info:', e);
+      }
+    } else if (ytId) {
+      try {
+        const res = await fetch(`/api/youtube/track-info?v=${encodeURIComponent(ytId)}`);
+        if (res.ok) {
+          const data = await res.json();
+          track = data.track;
+        }
+      } catch (e) {
+        console.warn('Failed to fetch shared youtube info:', e);
+      }
+    }
+
+    if (!track) {
+      document.body.classList.remove('shared-guest-view');
+      this.showGoogleLoginScreen();
+      return;
+    }
+
+    // 1. Render full player card (replaces skeleton)
+    this.renderSharedWebPlayer(track);
+
+    // 2. Load track in player engine
+    if (ytId || track.isOnline) {
+      this.player?.loadOnlineTrack({
+        ...track,
+        youtubeId: ytId || track.youtube_id || track.id,
+        isOnline: true
+      }, false);
+    } else {
+      this.player?.loadTrack(track, true, 0, false);
+    }
+  }
+
+  _renderSharedSkeleton(ytId) {
+    const mainView = document.getElementById('main-view');
+    if (!mainView) return;
+    mainView.innerHTML = `
+      <style>
+        @keyframes _sk_pulse{0%,100%{opacity:.45}50%{opacity:.9}}
+        @keyframes _sk_spin{to{transform:rotate(360deg)}}
+        .sk-box{animation:_sk_pulse 1.6s ease-in-out infinite}
+        .sk-spin{animation:_sk_spin 1s linear infinite;transform-origin:center}
+      </style>
+      <div class="shared-web-landing">
+        <div class="shared-ambient-bg" style="background:linear-gradient(135deg,#1e1035 0%,#0f172a 100%);"></div>
+        <div class="shared-player-card">
+          <div class="shared-cover-box">
+            <div class="shared-cover-img sk-box" style="background:rgba(255,255,255,.08);border-radius:16px;"></div>
+            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">
+              <svg class="sk-spin" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="rgba(255,255,255,.7)" stroke-width="2.2">
+                <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,.18)" stroke-width="2.2"/>
+                <path d="M12 3a9 9 0 0 1 9 9" stroke="rgba(255,255,255,.85)" stroke-linecap="round"/>
+              </svg>
+            </div>
+          </div>
+          <div class="shared-meta">
+            <div class="shared-badge is-buffering"></div>
+            <div class="sk-box" style="height:22px;width:70%;background:rgba(255,255,255,.1);border-radius:8px;margin:10px 0 6px;"></div>
+            <div class="sk-box" style="height:14px;width:45%;background:rgba(255,255,255,.07);border-radius:6px;"></div>
+          </div>
+          <div class="shared-scrubber-box">
+            <div class="shared-scrubber-bar">
+              <div class="shared-scrubber-fill" style="width:0%"></div>
+            </div>
+            <div class="shared-times"><span>0:00</span><span>--:--</span></div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  renderSharedWebPlayer(track) {
+    const mainView = document.getElementById('main-view');
+    if (!mainView) return;
+
+    const thumbUrl = track.thumbnail_url || (track.id ? `/api/tracks/${track.id}/thumb` : '/icon-192x192.png');
+    const durationStr = this.player?.formatTime(track.duration_sec || 0) || '0:00';
+
+    const rawArtist = (track.artist || track.channel || '').trim();
+    const cleanArtist = (!rawArtist || /^youtube$/i.test(rawArtist)) ? 'Nghệ sĩ' : rawArtist.replace(/\byoutube\b/gi, '').trim() || 'Nghệ sĩ';
+    const cleanTitle = (track.title || 'Bản nhạc được chia sẻ').replace(/\s*-\s*YouTube$/i, '').trim();
+
+    mainView.innerHTML = `
+      <div class="shared-web-landing">
+        <div class="shared-ambient-bg" style="background-image: url('${thumbUrl}');"></div>
+        
+        <div class="shared-player-card">
+          <div class="shared-cover-box">
+            <img src="${thumbUrl}" alt="Cover" class="shared-cover-img" id="shared-landing-cover" onerror="this.src='/icon-192x192.png'">
+            <button class="shared-huge-play-btn" id="btn-shared-listen-now" title="Phát / Tạm dừng">
+              <span id="shared-btn-icon">
+                <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              </span>
+            </button>
+          </div>
+
+          <div class="shared-meta">
+            <div class="shared-badge" id="shared-landing-badge"></div>
+            <h1 class="shared-title">${this.escapeHtml(cleanTitle)}</h1>
+            <p class="shared-artist">${this.escapeHtml(cleanArtist)}</p>
+          </div>
+
+          <div class="shared-scrubber-box">
+            <div class="shared-scrubber-bar" id="shared-scrubber">
+              <div class="shared-scrubber-fill" id="shared-scrubber-fill"></div>
+            </div>
+            <div class="shared-times">
+              <span id="shared-time-current">0:00</span>
+              <span id="shared-time-duration">${durationStr}</span>
+            </div>
+          </div>
+
+          <!-- Google Login Button -->
+          <button id="btn-shared-google-signin" class="pill-btn" style="width: 100%; min-height: 48px; background: #ffffff; color: #1e293b; font-weight: 700; font-size: 0.94rem; border: none; border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.25); cursor: pointer; transition: all 0.2s ease; margin-bottom: 10px;">
+            <svg width="22" height="22" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+            </svg>
+            <span>Đăng nhập với Google</span>
+          </button>
+
+          <!-- Install Button -->
+          <a href="/install" style="width: 100%; min-height: 44px; background: rgba(255,255,255,0.07); color: #e2e8f0; font-weight: 600; font-size: 0.88rem; border: 1px solid rgba(255,255,255,0.14); border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; transition: background 0.2s;">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Cài đặt
+          </a>
+        </div>
+      </div>
+    `;
+
+    // Bind Controls
+    const playSvg = `<polygon points="5 3 19 12 5 21 5 3"/>`;
+    const pauseSvg = `<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>`;
+    const spinnerSvg = `
+      <svg class="shared-spin" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.6">
+        <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.25)" stroke-width="2.6"/>
+        <path d="M12 3a9 9 0 0 1 9 9" stroke="#ffffff" stroke-linecap="round"/>
+      </svg>
+    `;
+
+    const togglePlayback = () => {
+      const state = store.get();
+      if (!state.isPlaying) {
+        store.set({ isBuffering: true });
+      }
+      this.player?.togglePlay();
+    };
+
+    document.getElementById('btn-shared-listen-now')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      togglePlayback();
+    });
+
+    document.getElementById('shared-landing-cover')?.addEventListener('click', () => {
+      togglePlayback();
+    });
+
+    document.getElementById('btn-shared-google-signin')?.addEventListener('click', async () => {
+      const btn = document.getElementById('btn-shared-google-signin');
+      try {
+        btn.disabled = true;
+        btn.innerHTML = '<span>Đang chuyển hướng sang Google...</span>';
+        const res = await api.auth.googleUrl();
+        if (res.url) {
+          window.location.href = res.url;
+        }
+      } catch (err) {
+        btn.disabled = false;
+        btn.innerHTML = '<span>Đăng nhập với Google</span>';
+        alert(err.message || 'Lỗi kết nối Google OAuth');
+      }
+    });
+
+    // Scrubber click to seek
+    const scrubberBar = document.getElementById('shared-scrubber');
+    if (scrubberBar) {
+      scrubberBar.addEventListener('click', (e) => {
+        const rect = scrubberBar.getBoundingClientRect();
+        const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        const dur = this.player?.getDuration() || track.duration_sec || 0;
+        if (dur > 0) {
+          this.player?.seek(pos * dur);
+        }
+      });
+    }
+
+    // Subscribe to store to update UI live
+    store.subscribe((state) => {
+      const isPlaying = state.isPlaying;
+      const isBuffering = Boolean(state.isBuffering);
+      const coverEl = document.getElementById('shared-landing-cover');
+      const btnIconEl = document.getElementById('shared-btn-icon');
+      const playBtn = document.getElementById('btn-shared-listen-now');
+      const badgeEl = document.getElementById('shared-landing-badge');
+
+      if (btnIconEl) {
+        if (isBuffering) {
+          btnIconEl.innerHTML = spinnerSvg;
+        } else {
+          btnIconEl.innerHTML = `<svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor">${isPlaying ? pauseSvg : playSvg}</svg>`;
+        }
+      }
+
+      if (badgeEl) {
+        if (isBuffering) {
+          badgeEl.textContent = '';
+          badgeEl.classList.add('is-buffering');
+        } else {
+          badgeEl.textContent = '';
+          badgeEl.classList.remove('is-buffering');
+        }
+      }
+
+      if (coverEl) coverEl.classList.toggle('is-playing', isPlaying && !isBuffering);
+      if (playBtn) {
+        playBtn.classList.toggle('pulsing', isPlaying && !isBuffering);
+        playBtn.classList.toggle('is-loading', isBuffering);
+      }
+
+      // Scrubber progress
+      const cur = state.currentTime || 0;
+      const dur = state.duration || track.duration_sec || 0;
+      const pct = dur > 0 ? (cur / dur) * 100 : 0;
+
+      const fillEl = document.getElementById('shared-scrubber-fill');
+      const curTimeEl = document.getElementById('shared-time-current');
+      const durTimeEl = document.getElementById('shared-time-duration');
+
+      if (fillEl) fillEl.style.width = `${pct}%`;
+      if (curTimeEl) curTimeEl.textContent = this.player?.formatTime(cur);
+      if (durTimeEl && dur > 0) durTimeEl.textContent = this.player?.formatTime(dur);
+    });
+  }
+
+  async playSharedTrack(trackId) {
+    try {
+      const res = await fetch(`/api/tracks/${encodeURIComponent(trackId)}/shared`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.track) {
+          this.player?.loadTrack(data.track, true, 0, true);
+          this.player?.showToast(`Đang phát: ${data.track.title}`);
+        }
+      }
+    } catch (e) {
+      console.warn('playSharedTrack error:', e);
+    }
+  }
+
+  async playSharedOnlineTrack(ytId) {
+    try {
+      const res = await fetch(`/api/youtube/track-info?v=${encodeURIComponent(ytId)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.track) {
+          this.player?.loadOnlineTrack(data.track, true);
+          this.player?.showToast(`Đang phát: ${data.track.title}`);
+        }
+      }
+    } catch (e) {
+      console.warn('playSharedOnlineTrack error:', e);
+    }
+  }
+
+  showSharedBanner(track) {
+    if (document.getElementById('muzifi-shared-banner')) return;
+    const banner = document.createElement('div');
+    banner.id = 'muzifi-shared-banner';
+    banner.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 99999;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: white;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 0.86rem;
+      font-weight: 500;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    `;
+    banner.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+          Đang nghe: <strong style="color:#fef08a;">${this.escapeHtml(track.title)}</strong>
+        </span>
+      </div>
+      <button id="btn-shared-login" style="background:#fff;color:#1e1e2e;border:none;border-radius:20px;padding:6px 14px;font-size:0.8rem;font-weight:700;cursor:pointer;flex-shrink:0;">
+        Đăng nhập Google
+      </button>
+    `;
+    document.body.appendChild(banner);
+    document.getElementById('btn-shared-login')?.addEventListener('click', () => {
+      this.showGoogleLoginScreen();
+    });
   }
 
   escapeHtml(str) {

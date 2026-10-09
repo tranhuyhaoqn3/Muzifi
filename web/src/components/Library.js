@@ -3,7 +3,7 @@ import { api } from '../api.js';
 import { icons } from './icons.js';
 import { showAddToPlaylistModal } from './PlaylistModal.js';
 import { JobsModal } from './Jobs.js';
-import { getAllOfflineTrackIds, saveTrackOffline } from '../offlineStorage.js';
+import { getAllOfflineTrackIds, getAllOfflineTracks, deleteOfflineTrack, saveTrackOffline } from '../offlineStorage.js';
 
 export class LibraryView {
   constructor(playerEngine) {
@@ -94,6 +94,53 @@ export class LibraryView {
       `).join('');
     }
 
+    const isStandalone = Boolean(
+      window.Capacitor ||
+      window.__muzifi_guest_mode ||
+      window.location.protocol === 'capacitor:' ||
+      window.location.protocol === 'file:' ||
+      localStorage.getItem('muzifi_standalone_mode') === 'true'
+    );
+
+    if (isStandalone) {
+      let localTracks = [];
+      try {
+        localTracks = await getAllOfflineTracks();
+      } catch (e) {}
+
+      if (localTracks.length === 0) {
+        localTracks = store.get().tracks || [];
+        if (localTracks.length === 0) {
+          try {
+            const raw = localStorage.getItem('muzifi_cached_library') || localStorage.getItem('metube_cached_library');
+            if (raw) localTracks = JSON.parse(raw);
+          } catch (e) {}
+        }
+      }
+
+      if (searchQuery && searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        localTracks = localTracks.filter(t =>
+          (t.title && t.title.toLowerCase().includes(q)) ||
+          (t.artist && t.artist.toLowerCase().includes(q)) ||
+          (t.album && t.album.toLowerCase().includes(q))
+        );
+      }
+
+      if (sortBy === 'title_asc') {
+        localTracks.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+      } else if (sortBy === 'duration_desc') {
+        localTracks.sort((a, b) => (b.duration_sec || 0) - (a.duration_sec || 0));
+      } else {
+        localTracks.sort((a, b) => (b.savedAt || b.created_at || 0) - (a.savedAt || a.created_at || 0));
+      }
+
+      this.cachedTrackIds = new Set(localTracks.map(t => t.id));
+      store.set({ tracks: localTracks, totalTracks: localTracks.length });
+      this.renderTrackItems(localTracks);
+      return;
+    }
+
     try {
       const data = await api.tracks.list({
         type: '',
@@ -121,13 +168,20 @@ export class LibraryView {
       this.renderTrackItems(tracksToRender);
       this.checkCachedTracks();
     } catch (err) {
-      // Offline fallback: load from cached tracks in localStorage or store
-      let fallback = store.get().tracks || [];
+      // Offline / Serverless fallback: load from IndexedDB records
+      let fallback = [];
+      try {
+        fallback = await getAllOfflineTracks();
+      } catch (e) {}
+
       if (fallback.length === 0) {
-        try {
-          const raw = localStorage.getItem('muzifi_cached_library') || localStorage.getItem('metube_cached_library');
-          if (raw) fallback = JSON.parse(raw);
-        } catch (e) {}
+        fallback = store.get().tracks || [];
+        if (fallback.length === 0) {
+          try {
+            const raw = localStorage.getItem('muzifi_cached_library') || localStorage.getItem('metube_cached_library');
+            if (raw) fallback = JSON.parse(raw);
+          } catch (e) {}
+        }
       }
 
       if (fallback.length > 0) {
@@ -149,8 +203,8 @@ export class LibraryView {
       } else if (tracksContainer) {
         tracksContainer.innerHTML = `
           <div class="empty-state">
-            <p class="empty-title">Đang ở chế độ Offline</p>
-            <p>Chưa có dữ liệu bài hát nào được lưu trong bộ nhớ đệm.</p>
+            <p class="empty-title">Chưa có bài hát nào</p>
+            <p>Bấm nút (+) ở góc trên để thêm file nhạc vào máy.</p>
           </div>
         `;
       }
@@ -374,7 +428,7 @@ export class LibraryView {
       return `
         <div class="track-item ${isCur ? 'playing' : ''}" data-id="${track.id}">
           <div class="track-thumb-wrap">
-            <img class="track-thumb" src="/api/tracks/${track.id}/thumb" alt="Cover" loading="lazy">
+            <img class="track-thumb" src="${track.thumbBlob ? URL.createObjectURL(track.thumbBlob) : (track.thumbDataUrl || `/api/tracks/${track.id}/thumb`)}" onerror="this.onerror=null;this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'%236366f1\'><path d=\'M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z\'/></svg>'" alt="Cover" loading="lazy">
           </div>
 
           <div class="track-meta" style="flex:1;min-width:0;">
@@ -483,10 +537,27 @@ export class LibraryView {
     btn.disabled = true;
     btn.innerHTML = `
       <svg class="spin-loader" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-      <span>Kiểm tra...</span>
+      <span>Tìm bìa & lời...</span>
     `;
 
     try {
+      // 1. Quét & tự động tải ảnh bìa / lời bài hát còn thiếu trên máy chủ
+      let enrichRes = { thumbFixed: 0, lyricsFixed: 0 };
+      try {
+        enrichRes = await api.tracks.enrich();
+        if (enrichRes && (enrichRes.thumbFixed > 0 || enrichRes.lyricsFixed > 0)) {
+          this.fetchAndRenderTracks();
+        }
+      } catch (enrichErr) {
+        console.warn('Enrich notice:', enrichErr);
+      }
+
+      btn.innerHTML = `
+        <svg class="spin-loader" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+        <span>Kiểm tra offline...</span>
+      `;
+
+      // 2. Kiểm tra và đồng bộ bài hát về máy (IndexedDB)
       const data = await api.tracks.list({ limit: 1000 });
       const tracks = data.tracks || [];
       if (tracks.length === 0) {
@@ -505,6 +576,14 @@ export class LibraryView {
           <span style="color:#10b981;">Đã đủ</span>
         `;
         this.updateCachedBadges();
+        const msgParts = [];
+        if (enrichRes.thumbFixed > 0) msgParts.push(`+${enrichRes.thumbFixed} ảnh bìa`);
+        if (enrichRes.lyricsFixed > 0) msgParts.push(`+${enrichRes.lyricsFixed} lời bài hát`);
+        if (msgParts.length > 0) {
+          this.player?.showToast(`Đã bổ sung ${msgParts.join(', ')}`);
+        } else {
+          this.player?.showToast('Thư viện đã có đầy đủ bìa, lời và bài hát');
+        }
         setTimeout(() => { btn.innerHTML = originalBtnHtml; btn.disabled = false; }, 2500);
         return;
       }
@@ -577,7 +656,12 @@ export class LibraryView {
         <span style="color:#10b981;">Đã xong</span>
       `;
       this.updateCachedBadges();
-      this.player?.showToast(`Đã đồng bộ xong ${done} bài hát về máy`);
+
+      const summaryParts = [];
+      if (enrichRes.thumbFixed > 0) summaryParts.push(`+${enrichRes.thumbFixed} ảnh bìa`);
+      if (enrichRes.lyricsFixed > 0) summaryParts.push(`+${enrichRes.lyricsFixed} lời bài hát`);
+      if (done > 0) summaryParts.push(`đã tải ${done} bài về máy`);
+      this.player?.showToast(summaryParts.length > 0 ? `Đã đồng bộ: ${summaryParts.join(', ')}` : `Đã đồng bộ xong ${done} bài hát về máy`);
       setTimeout(() => { btn.innerHTML = originalBtnHtml; btn.disabled = false; }, 3000);
     } catch (err) {
       console.warn('Sync failed:', err);
@@ -596,6 +680,13 @@ export class LibraryView {
             <button class="icon-btn" id="modal-close">${icons.x}</button>
           </div>
           <div class="modal-body" style="padding:14px;display:flex;flex-direction:column;gap:8px;">
+            <button class="btn-secondary" id="opt-share" style="justify-content:flex-start;min-height:40px;font-size:0.9rem;">
+              ${icons.share} Chia sẻ bài hát
+            </button>
+            <button class="btn-secondary" id="opt-enrich" style="justify-content:flex-start;min-height:40px;font-size:0.9rem;">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+              Tìm ảnh bìa & lời bài hát
+            </button>
             <button class="btn-secondary" id="opt-add-playlist" style="justify-content:flex-start;min-height:40px;font-size:0.9rem;">
               ${icons.plus} Thêm vào Playlist
             </button>
@@ -611,17 +702,44 @@ export class LibraryView {
     modal.querySelector('#modal-close').addEventListener('click', () => { modal.remove(); });
     modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
 
-    // 1. Thêm vào Playlist
+    // 0. Chia sẻ bài hát
+    modal.querySelector('#opt-share').addEventListener('click', () => {
+      modal.remove();
+      this.player?.shareTrack(track);
+    });
+
+    // 1. Tìm ảnh bìa & lời bài hát cho riêng bài này
+    modal.querySelector('#opt-enrich').addEventListener('click', async () => {
+      modal.remove();
+      this.player?.showToast(`Đang tìm ảnh bìa và lời cho "${track.title}"...`, 2000);
+      try {
+        const res = await api.tracks.enrichSingle(track.id);
+        const added = [];
+        if (res.enrichedThumb) added.push('ảnh bìa');
+        if (res.enrichedLyrics) added.push('lời bài hát');
+        if (added.length > 0) {
+          this.player?.showToast(`Đã tìm thấy ${added.join(' và ')} cho "${track.title}"`);
+          await this.fetchAndRenderTracks();
+        } else {
+          this.player?.showToast(`Bài hát đã có đầy đủ bìa và lời`);
+        }
+      } catch (err) {
+        this.player?.showToast(`Không tìm thấy thêm thông tin: ${err.message}`);
+      }
+    });
+
+    // 2. Thêm vào Playlist
     modal.querySelector('#opt-add-playlist').addEventListener('click', () => {
       modal.remove();
       showAddToPlaylistModal({ trackIds: [track.id], trackTitle: track.title });
     });
 
-    // 2. Xóa bài hát
+    // 3. Xóa bài hát
     modal.querySelector('#opt-delete').addEventListener('click', async () => {
       if (!confirm(`Xóa bài "${track.title}" khỏi máy? Thao tác này không thể hoàn tác.`)) return;
       try {
-        await api.tracks.delete(track.id);
+        await api.tracks.delete(track.id).catch(() => {});
+        await deleteOfflineTrack(track.id);
         modal.remove();
         this.player?.showToast(`Đã xóa "${track.title}" khỏi thư viện`);
         await this.fetchAndRenderTracks();

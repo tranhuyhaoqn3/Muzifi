@@ -111,8 +111,84 @@ router.get('/qualities', requireAuth, async (req, res) => {
   }
 });
 
+// 4a2. Public track info for shared YouTube links
+router.get('/track-info', async (req, res) => {
+  const v = normalizeYouTubeId(req.query.v);
+  if (!v) {
+    return res.status(400).json({ error: 'Video ID required' });
+  }
+
+  // Fast path: YouTube oEmbed (< 100ms, no heavy yt-dlp child process spawn)
+  try {
+    const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(v)}&format=json`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 1500);
+    const oembedRes = await fetch(oembedUrl, { signal: controller.signal });
+    clearTimeout(timer);
+
+    if (oembedRes.ok) {
+      const data = await oembedRes.json();
+      const rawTitle = data.title || 'Bản nhạc trực tuyến';
+      const cleanTitle = rawTitle.replace(/\s*-\s*YouTube$/i, '').trim();
+      let rawArtist = data.author_name || 'Nghệ sĩ';
+      if (/^youtube$/i.test(rawArtist.trim())) rawArtist = 'Nghệ sĩ';
+      else rawArtist = rawArtist.replace(/\byoutube\b/gi, '').trim() || 'Nghệ sĩ';
+
+      return res.json({
+        track: {
+          id: v,
+          youtube_id: v,
+          youtubeId: v,
+          title: cleanTitle,
+          artist: rawArtist,
+          duration_sec: 0,
+          thumbnail_url: data.thumbnail_url || `https://i.ytimg.com/vi/${v}/hqdefault.jpg`,
+          isOnline: true
+        }
+      });
+    }
+  } catch (e) {
+    // If oEmbed fails or times out, fallback to yt-dlp
+  }
+
+  try {
+    const info = await fetchYouTubeInfo(`https://www.youtube.com/watch?v=${v}`);
+    const rawTitle = info.title || 'Bản nhạc trực tuyến';
+    const cleanTitle = rawTitle.replace(/\s*-\s*YouTube$/i, '').trim();
+    let rawArtist = info.artist || info.uploader || 'Nghệ sĩ';
+    if (/^youtube$/i.test(rawArtist.trim())) rawArtist = 'Nghệ sĩ';
+    else rawArtist = rawArtist.replace(/\byoutube\b/gi, '').trim() || 'Nghệ sĩ';
+
+    res.json({
+      track: {
+        id: v,
+        youtube_id: v,
+        youtubeId: v,
+        title: cleanTitle,
+        artist: rawArtist,
+        duration_sec: info.duration || 0,
+        thumbnail_url: info.thumbnail || `https://i.ytimg.com/vi/${v}/hqdefault.jpg`,
+        isOnline: true
+      }
+    });
+  } catch (err) {
+    res.json({
+      track: {
+        id: v,
+        youtube_id: v,
+        youtubeId: v,
+        title: 'Bản nhạc chia sẻ',
+        artist: 'Nghệ sĩ',
+        duration_sec: 0,
+        thumbnail_url: `https://i.ytimg.com/vi/${v}/hqdefault.jpg`,
+        isOnline: true
+      }
+    });
+  }
+});
+
 // 4b. Online Proxy Stream (With Local Disk Cache for Instant Back/Repeat & Background Preload)
-router.get('/stream', requireAuth, async (req, res) => {
+router.get('/stream', async (req, res) => {
   const { type = 'audio', quality } = req.query;
   const v = normalizeYouTubeId(req.query.v);
   if (!v) {

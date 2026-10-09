@@ -64,6 +64,81 @@ app.use('/api/lyrics', lyricsRouter);
 app.use('/api/system', systemRouter);
 app.use('/api/settings', systemRouter); // Alias for settings
 
+// iOS Web Clip .mobileconfig profile generator
+app.get('/api/install-profile', (req, res) => {
+  const forwardedProto = req.headers['x-forwarded-proto'];
+  const proto = forwardedProto || (req.secure ? 'https' : (req.get('host')?.includes('localhost') ? req.protocol : 'https'));
+  const host = req.get('host') || 'm.baokien.site';
+  const baseUrl = `${proto}://${host}`;
+  const profileUUID = 'muzifi-webclip-' + Buffer.from(host).toString('hex').slice(0, 8);
+
+  let iconBase64 = '';
+  try {
+    const iconPath = path.join(ROOT_DIR, 'web', 'apple-touch-icon.png');
+    if (fs.existsSync(iconPath)) {
+      iconBase64 = fs.readFileSync(iconPath).toString('base64');
+    }
+  } catch (e) {
+    console.warn('[Profile] Could not read app icon:', e.message);
+  }
+
+  const mobileconfig = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>PayloadContent</key>
+  <array>
+    <dict>
+      <key>FullScreen</key>
+      <true/>
+      <key>Icon</key>
+      <data>${iconBase64}</data>
+      <key>IsRemovable</key>
+      <true/>
+      <key>Label</key>
+      <string>Muzifi</string>
+      <key>PayloadDescription</key>
+      <string>Thêm Muzifi vào Màn hình chính</string>
+      <key>PayloadDisplayName</key>
+      <string>Muzifi Web App</string>
+      <key>PayloadIdentifier</key>
+      <string>com.muzifi.webclip.${profileUUID}</string>
+      <key>PayloadType</key>
+      <string>com.apple.webClip.managed</string>
+      <key>PayloadUUID</key>
+      <string>${profileUUID}-clip</string>
+      <key>PayloadVersion</key>
+      <integer>1</integer>
+      <key>Precomposed</key>
+      <true/>
+      <key>URL</key>
+      <string>${baseUrl}/</string>
+    </dict>
+  </array>
+  <key>PayloadDescription</key>
+  <string>Cài đặt Muzifi lên Màn hình chính iPhone/iPad của bạn</string>
+  <key>PayloadDisplayName</key>
+  <string>Muzifi - Cài đặt App</string>
+  <key>PayloadIdentifier</key>
+  <string>com.muzifi.install.${profileUUID}</string>
+  <key>PayloadOrganization</key>
+  <string>Muzifi</string>
+  <key>PayloadRemovalDisallowed</key>
+  <false/>
+  <key>PayloadType</key>
+  <string>Configuration</string>
+  <key>PayloadUUID</key>
+  <string>${profileUUID}-root</string>
+  <key>PayloadVersion</key>
+  <integer>1</integer>
+</dict>
+</plist>`;
+
+  res.setHeader('Content-Type', 'application/x-apple-aspen-config');
+  res.setHeader('Content-Disposition', 'attachment; filename="Muzifi.mobileconfig"');
+  res.send(mobileconfig);
+});
+
 // Serve Web Frontend
 const distPath = path.join(ROOT_DIR, 'dist');
 const webPath = path.join(ROOT_DIR, 'web');
@@ -86,6 +161,9 @@ if (fs.existsSync(distPath)) {
       }
       if (req.path === '/about' || req.path === '/about.html') {
         return res.sendFile(path.join(distPath, 'about.html'));
+      }
+      if (req.path === '/install' || req.path === '/install.html') {
+        return res.sendFile(path.join(distPath, 'install.html'));
       }
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       return res.sendFile(path.join(distPath, 'index.html'));
